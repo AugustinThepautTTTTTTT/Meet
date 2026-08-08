@@ -26,6 +26,10 @@ await clients`CREATE TABLE IF NOT EXISTS contact_requests (
 )`;
 
 await lawyersDb`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+await lawyersDb`CREATE TABLE IF NOT EXISTS lawyer_accounts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, email text UNIQUE NOT NULL,
+  password_hash text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+)`;
 await lawyersDb`CREATE TABLE IF NOT EXISTS lawyers (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slug text UNIQUE NOT NULL, initials text NOT NULL,
   name text NOT NULL, specialty text NOT NULL, practice text NOT NULL, location text NOT NULL,
@@ -36,11 +40,14 @@ await lawyersDb`CREATE TABLE IF NOT EXISTS lawyers (
   featured_rank integer NOT NULL DEFAULT 100, created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 )`;
+await lawyersDb`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS account_id uuid UNIQUE REFERENCES lawyer_accounts(id) ON DELETE SET NULL`;
 await lawyersDb`CREATE TABLE IF NOT EXISTS posts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), lawyer_id uuid NOT NULL REFERENCES lawyers(id) ON DELETE CASCADE,
   title text NOT NULL, body text NOT NULL, published boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now()
 )`;
+await lawyersDb`ALTER TABLE posts ADD COLUMN IF NOT EXISTS excerpt text NOT NULL DEFAULT ''`;
+await lawyersDb`ALTER TABLE posts ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`;
 
 const profiles = [
   ['ana-martins','AM','Ana Martins','Employment & workplace','Employment','Paris','English, French, Portuguese',97,'€180 / consultation','Today at 16:30','coral',['Unfair dismissal specialist','Employee-side representation'],'I help employees and growing teams resolve workplace disputes with clarity, empathy and a practical plan forward.','12 years','Paris Bar · Verified',['Dismissal','Discrimination','Workplace rights'],['job','employer','fired','dismissed','salary','workplace','harassment'],1,'What to do before signing a termination agreement'],

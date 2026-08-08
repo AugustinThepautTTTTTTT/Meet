@@ -28,31 +28,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  try {
-    const profile = await request.json();
-    if (!profile.name?.trim() || !profile.title?.trim()) {
-      return NextResponse.json({ error: "Name and professional title are required." }, { status: 400 });
-    }
-    const sql = getLawyerDb();
-    const slug = profile.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const tags = String(profile.specialties || "General advice").split(",").map((item: string) => item.trim()).filter(Boolean);
-    const [lawyer] = await sql`
-      INSERT INTO lawyers (slug, initials, name, specialty, practice, location, languages, price, availability, accent, reasons, bio, experience, credentials, tags, keywords, published)
-      VALUES (${slug}, ${profile.name.split(/\s+/).map((part: string) => part[0]).join("").slice(0,2).toUpperCase()}, ${profile.name.trim()}, ${profile.title.trim()}, ${tags[0] || "General"}, ${profile.city || "Remote"}, ${profile.languages || "English"}, ${profile.fee || "Contact for pricing"}, 'Within one business day', 'blue', ${[profile.approach || "Client-focused advice", `${profile.experience || "Experienced"} practitioner`]}, ${profile.bio || "Clear, practical legal guidance."}, ${profile.experience || "Experienced"}, 'Credentials pending verification', ${tags}, ${tags.map((tag: string) => tag.toLowerCase())}, true)
-      ON CONFLICT (slug) DO UPDATE SET
-        specialty = EXCLUDED.specialty, location = EXCLUDED.location, languages = EXCLUDED.languages,
-        price = EXCLUDED.price, reasons = EXCLUDED.reasons, bio = EXCLUDED.bio,
-        experience = EXCLUDED.experience, tags = EXCLUDED.tags, keywords = EXCLUDED.keywords,
-        published = true, updated_at = now()
-      RETURNING *
-    `;
-    if (profile.post?.trim()) await sql`
-      INSERT INTO posts (lawyer_id, title, body, published)
-      VALUES (${lawyer.id}, ${profile.post.trim()}, ${`A practical introduction to ${profile.post.trim().toLowerCase()}.`}, true)
-    `;
-    return NextResponse.json({ lawyer }, { status: 201 });
-  } catch (error) {
-    console.error("lawyer_publish_failed", error);
-    return NextResponse.json({ error: "The profile could not be published." }, { status: 500 });
-  }
+  void request;
+  return NextResponse.json(
+    { error: "Sign in to publish a lawyer profile." },
+    { status: 401 },
+  );
 }
