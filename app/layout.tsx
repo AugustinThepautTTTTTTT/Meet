@@ -13,9 +13,12 @@ const serif = Lora({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL || "meet.vercel.app"}`),
+  metadataBase: new URL(
+    `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL || "meet.vercel.app"}`,
+  ),
   title: "Meet — Find the right lawyer",
-  description: "Describe your legal problem and meet lawyers matched to your situation.",
+  description:
+    "Describe your legal problem and meet lawyers matched to your situation.",
   openGraph: {
     title: "Meet the right lawyer.",
     description: "Clear legal help starts with the right introduction.",
@@ -33,7 +36,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
       <body className={`${sans.variable} ${serif.variable}`}>{children}</body>

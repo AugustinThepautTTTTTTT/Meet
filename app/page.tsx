@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 
 type Practice =
   | "Employment"
@@ -14,6 +15,7 @@ type Practice =
   | "Estates"
   | "Technology";
 type Lawyer = {
+  slug?: string;
   initials: string;
   name: string;
   specialty: string;
@@ -31,6 +33,9 @@ type Lawyer = {
   tags: string[];
   post: string;
   keywords: string[];
+  profilePhotoUrl?: string;
+  coverPhotoUrl?: string;
+  tagline?: string;
 };
 
 const categories = [
@@ -700,9 +705,20 @@ export default function Home() {
                 {matches.map((lawyer, index) => (
                   <article className="lawyer-card" key={lawyer.name}>
                     <div className="card-topline">
-                      <div className={`avatar ${lawyer.accent}`}>
-                        {lawyer.initials}
-                      </div>
+                      {lawyer.profilePhotoUrl ? (
+                        <Image
+                          className="avatar lawyer-photo"
+                          src={lawyer.profilePhotoUrl}
+                          alt={lawyer.name}
+                          width={48}
+                          height={48}
+                          unoptimized
+                        />
+                      ) : (
+                        <div className={`avatar ${lawyer.accent}`}>
+                          {lawyer.initials}
+                        </div>
+                      )}
                       <span className="match-score">
                         {Math.max(86, lawyer.match - index)}% match
                       </span>
@@ -869,7 +885,20 @@ function PublicProfile({
       </button>
       <div className="profile-main">
         <div className="public-hero">
-          <div className={`avatar ${lawyer.accent} xl`}>{lawyer.initials}</div>
+          {lawyer.profilePhotoUrl ? (
+            <Image
+              className="avatar xl lawyer-photo"
+              src={lawyer.profilePhotoUrl}
+              alt={lawyer.name}
+              width={100}
+              height={100}
+              unoptimized
+            />
+          ) : (
+            <div className={`avatar ${lawyer.accent} xl`}>
+              {lawyer.initials}
+            </div>
+          )}
           <div>
             <span className="verified">✓ Identity & credentials verified</span>
             <h1>{lawyer.name}</h1>
@@ -928,6 +957,11 @@ function PublicProfile({
           Contact {lawyer.name.split(" ")[0]} <span>→</span>
         </button>
         <button className="card-button">Save profile</button>
+        {lawyer.slug ? (
+          <Link className="full-profile-link" href={`/lawyers/${lawyer.slug}`}>
+            Open full profile page →
+          </Link>
+        ) : null}
         <p>No commitment. Your information stays private.</p>
       </aside>
     </section>
