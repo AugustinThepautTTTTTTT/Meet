@@ -8,7 +8,7 @@ export async function GET() {
       SELECT l.*, p.title AS post, p.slug AS post_slug
       FROM lawyers l
       LEFT JOIN LATERAL (
-        SELECT title FROM posts WHERE lawyer_id = l.id AND published = true ORDER BY created_at DESC LIMIT 1
+        SELECT title, slug FROM posts WHERE lawyer_id = l.id AND published = true ORDER BY created_at DESC LIMIT 1
       ) p ON true
       WHERE l.published = true
       ORDER BY l.featured_rank ASC, l.created_at ASC
