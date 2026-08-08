@@ -15,6 +15,7 @@ export type ArticleDraft = {
   excerpt: string;
   body: string;
   cover_image_url: string;
+  cover_settings: { position: number; zoom: number };
   content: ArticleBlock[];
   theme: string;
   author_note: string;
@@ -26,6 +27,7 @@ export const blankArticle: ArticleDraft = {
   excerpt: "",
   body: "",
   cover_image_url: "",
+  cover_settings: { position: 50, zoom: 100 },
   content: [],
   theme: "editorial",
   author_note: "",
@@ -56,7 +58,17 @@ export default function ArticleStudio({
       ...article,
       content: [
         ...article.content,
-        { id: crypto.randomUUID(), type, text: "", url: "", caption: "" },
+        {
+          id: crypto.randomUUID(),
+          type,
+          text: "",
+          url: "",
+          caption: "",
+          width: "wide",
+          align: "center",
+          aspect: "auto",
+          position: 50,
+        },
       ],
     });
   }
@@ -160,6 +172,10 @@ export default function ArticleStudio({
                 onChange={(url) =>
                   setArticle({ ...article, cover_image_url: url })
                 }
+                settings={article.cover_settings || { position: 50, zoom: 100 }}
+                onSettings={(cover_settings) =>
+                  setArticle({ ...article, cover_settings })
+                }
               />
               <label>
                 Article title
@@ -241,6 +257,72 @@ export default function ArticleStudio({
                           }
                           placeholder="Image caption"
                         />
+                        <div className="image-design-controls">
+                          <label>
+                            Size
+                            <select
+                              value={block.width || "wide"}
+                              onChange={(e) =>
+                                patch(block.id, {
+                                  width: e.target
+                                    .value as ArticleBlock["width"],
+                                })
+                              }
+                            >
+                              <option value="small">Small</option>
+                              <option value="medium">Medium</option>
+                              <option value="wide">Wide</option>
+                              <option value="full">Full width</option>
+                            </select>
+                          </label>
+                          <label>
+                            Align
+                            <select
+                              value={block.align || "center"}
+                              onChange={(e) =>
+                                patch(block.id, {
+                                  align: e.target
+                                    .value as ArticleBlock["align"],
+                                })
+                              }
+                            >
+                              <option value="left">Left</option>
+                              <option value="center">Center</option>
+                              <option value="right">Right</option>
+                            </select>
+                          </label>
+                          <label>
+                            Shape
+                            <select
+                              value={block.aspect || "auto"}
+                              onChange={(e) =>
+                                patch(block.id, {
+                                  aspect: e.target
+                                    .value as ArticleBlock["aspect"],
+                                })
+                              }
+                            >
+                              <option value="auto">Original</option>
+                              <option value="landscape">Landscape</option>
+                              <option value="square">Square</option>
+                              <option value="portrait">Portrait</option>
+                            </select>
+                          </label>
+                          <label>
+                            Focal point
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={block.position ?? 50}
+                              onChange={(e) =>
+                                patch(block.id, {
+                                  position: Number(e.target.value),
+                                })
+                              }
+                            />
+                          </label>
+                        </div>
                       </>
                     ) : block.type === "heading" ? (
                       <input
@@ -327,13 +409,18 @@ function ArticlePreview({ article }: { article: ArticleDraft }) {
         {article.excerpt || "Your article introduction will appear here."}
       </p>
       {article.cover_image_url ? (
-        <Image
-          src={article.cover_image_url}
-          alt=""
-          width={1200}
-          height={700}
-          unoptimized
-        />
+        <div className="preview-article-cover">
+          <Image
+            src={article.cover_image_url}
+            alt=""
+            fill
+            style={{
+              objectPosition: `50% ${article.cover_settings?.position ?? 50}%`,
+              transform: `scale(${(article.cover_settings?.zoom ?? 100) / 100})`,
+            }}
+            unoptimized
+          />
+        </div>
       ) : null}
       <ArticleContent blocks={article.content} />
       {article.author_note ? (

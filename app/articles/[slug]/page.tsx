@@ -70,14 +70,19 @@ export default async function ArticlePage({
         </div>
         {article.cover_image_url ? (
           <div className="published-cover">
-            <Image
-              src={article.cover_image_url}
-              alt=""
-              width={1400}
-              height={780}
-              sizes="100vw"
-              unoptimized
-            />
+            <div className="published-cover-frame">
+              <Image
+                src={article.cover_image_url}
+                alt=""
+                fill
+                sizes="100vw"
+                style={{
+                  objectPosition: `50% ${article.cover_settings?.position ?? 50}%`,
+                  transform: `scale(${(article.cover_settings?.zoom ?? 100) / 100})`,
+                }}
+                unoptimized
+              />
+            </div>
           </div>
         ) : null}
         <ArticleContent blocks={blocks} />

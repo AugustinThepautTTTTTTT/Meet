@@ -16,6 +16,7 @@ export async function POST(request: Request) {
       content,
       theme,
       author_note,
+      cover_settings,
       published,
     } = await request.json();
     const blocks = Array.isArray(content) ? content.slice(0, 80) : [];
@@ -44,8 +45,8 @@ export async function POST(request: Request) {
         "",
       )}-${id ? String(id).slice(0, 6) : Date.now().toString(36)}`;
     const [article] = id
-      ? await sql`UPDATE posts SET slug=CASE WHEN slug='' THEN ${slug} ELSE slug END,title=${title.trim()},excerpt=${String(excerpt || "").trim()},body=${String(body || "").trim()},cover_image_url=${String(cover_image_url || "")},content=${JSON.stringify(blocks)}::jsonb,theme=${String(theme || "editorial")},author_note=${String(author_note || "")},published=${Boolean(published)},updated_at=now() WHERE id=${id} AND lawyer_id=${profile.id} RETURNING *`
-      : await sql`INSERT INTO posts (lawyer_id,slug,title,excerpt,body,cover_image_url,content,theme,author_note,published) VALUES (${profile.id},${slug},${title.trim()},${String(excerpt || "").trim()},${String(body || "").trim()},${String(cover_image_url || "")},${JSON.stringify(blocks)}::jsonb,${String(theme || "editorial")},${String(author_note || "")},${Boolean(published)}) RETURNING *`;
+      ? await sql`UPDATE posts SET slug=CASE WHEN slug='' THEN ${slug} ELSE slug END,title=${title.trim()},excerpt=${String(excerpt || "").trim()},body=${String(body || "").trim()},cover_image_url=${String(cover_image_url || "")},cover_settings=${JSON.stringify(cover_settings || { position: 50, zoom: 100 })}::jsonb,content=${JSON.stringify(blocks)}::jsonb,theme=${String(theme || "editorial")},author_note=${String(author_note || "")},published=${Boolean(published)},updated_at=now() WHERE id=${id} AND lawyer_id=${profile.id} RETURNING *`
+      : await sql`INSERT INTO posts (lawyer_id,slug,title,excerpt,body,cover_image_url,cover_settings,content,theme,author_note,published) VALUES (${profile.id},${slug},${title.trim()},${String(excerpt || "").trim()},${String(body || "").trim()},${String(cover_image_url || "")},${JSON.stringify(cover_settings || { position: 50, zoom: 100 })}::jsonb,${JSON.stringify(blocks)}::jsonb,${String(theme || "editorial")},${String(author_note || "")},${Boolean(published)}) RETURNING *`;
     if (!article)
       return NextResponse.json(
         { error: "Article not found." },

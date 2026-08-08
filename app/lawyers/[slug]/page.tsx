@@ -31,6 +31,10 @@ export default async function LawyerPublicPage({
             alt=""
             fill
             sizes="100vw"
+            style={{
+              objectPosition: `50% ${lawyer.cover_settings?.position ?? 50}%`,
+              transform: `scale(${(lawyer.cover_settings?.zoom ?? 100) / 100})`,
+            }}
             unoptimized
           />
         ) : (
@@ -46,6 +50,10 @@ export default async function LawyerPublicPage({
               alt={lawyer.name}
               width={150}
               height={150}
+              style={{
+                objectPosition: `50% ${lawyer.photo_settings?.position ?? 50}%`,
+                transform: `scale(${(lawyer.photo_settings?.zoom ?? 100) / 100})`,
+              }}
               unoptimized
             />
           ) : (

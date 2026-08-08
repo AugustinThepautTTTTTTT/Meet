@@ -9,12 +9,16 @@ export default function MediaUpload({
   value,
   shape = "wide",
   onChange,
+  settings,
+  onSettings,
 }: {
   label: string;
   purpose: string;
   value: string;
   shape?: "wide" | "portrait";
   onChange: (url: string) => void;
+  settings?: { position: number; zoom: number };
+  onSettings?: (settings: { position: number; zoom: number }) => void;
 }) {
   const [status, setStatus] = useState("");
   async function upload(event: ChangeEvent<HTMLInputElement>) {
@@ -45,6 +49,10 @@ export default function MediaUpload({
           fill
           sizes={shape === "portrait" ? "160px" : "600px"}
           unoptimized
+          style={{
+            objectPosition: `50% ${settings?.position ?? 50}%`,
+            transform: `scale(${(settings?.zoom ?? 100) / 100})`,
+          }}
         />
       ) : (
         <div className="media-placeholder">
@@ -61,6 +69,34 @@ export default function MediaUpload({
         <span>{value ? "Replace image" : `Upload ${label.toLowerCase()}`}</span>
       </label>
       {status ? <small className="upload-status">{status}</small> : null}
+      {value && settings && onSettings ? (
+        <div className="media-adjust">
+          <label>
+            Position
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={settings.position}
+              onChange={(e) =>
+                onSettings({ ...settings, position: Number(e.target.value) })
+              }
+            />
+          </label>
+          <label>
+            Zoom
+            <input
+              type="range"
+              min="100"
+              max="180"
+              value={settings.zoom}
+              onChange={(e) =>
+                onSettings({ ...settings, zoom: Number(e.target.value) })
+              }
+            />
+          </label>
+        </div>
+      ) : null}
     </div>
   );
 }

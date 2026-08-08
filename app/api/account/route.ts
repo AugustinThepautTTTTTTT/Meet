@@ -12,7 +12,7 @@ export async function GET() {
   const [profile] =
     await sql`SELECT * FROM lawyers WHERE account_id=${accountId}`;
   const articles = profile
-    ? await sql`SELECT id,slug,title,excerpt,body,cover_image_url,content,theme,author_note,published,created_at,updated_at FROM posts WHERE lawyer_id=${profile.id} ORDER BY updated_at DESC`
+    ? await sql`SELECT id,slug,title,excerpt,body,cover_image_url,cover_settings,content,theme,author_note,published,created_at,updated_at FROM posts WHERE lawyer_id=${profile.id} ORDER BY updated_at DESC`
     : [];
   return NextResponse.json({ account, profile: profile || null, articles });
 }

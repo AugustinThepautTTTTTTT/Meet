@@ -52,6 +52,8 @@ await lawyersDb`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS education text NOT 
 await lawyersDb`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS awards text[] NOT NULL DEFAULT '{}'`;
 await lawyersDb`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS services text[] NOT NULL DEFAULT '{}'`;
 await lawyersDb`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS consultation_format text NOT NULL DEFAULT 'Video or in person'`;
+await lawyersDb`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS photo_settings jsonb NOT NULL DEFAULT '{"position":50,"zoom":100}'::jsonb`;
+await lawyersDb`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS cover_settings jsonb NOT NULL DEFAULT '{"position":50,"zoom":100}'::jsonb`;
 await lawyersDb`CREATE TABLE IF NOT EXISTS posts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), lawyer_id uuid NOT NULL REFERENCES lawyers(id) ON DELETE CASCADE,
   title text NOT NULL, body text NOT NULL, published boolean NOT NULL DEFAULT false,
@@ -64,6 +66,7 @@ await lawyersDb`ALTER TABLE posts ADD COLUMN IF NOT EXISTS cover_image_url text 
 await lawyersDb`ALTER TABLE posts ADD COLUMN IF NOT EXISTS content jsonb NOT NULL DEFAULT '[]'::jsonb`;
 await lawyersDb`ALTER TABLE posts ADD COLUMN IF NOT EXISTS theme text NOT NULL DEFAULT 'editorial'`;
 await lawyersDb`ALTER TABLE posts ADD COLUMN IF NOT EXISTS author_note text NOT NULL DEFAULT ''`;
+await lawyersDb`ALTER TABLE posts ADD COLUMN IF NOT EXISTS cover_settings jsonb NOT NULL DEFAULT '{"position":50,"zoom":100}'::jsonb`;
 await lawyersDb`UPDATE posts SET slug=trim(both '-' from regexp_replace(lower(title), '[^a-z0-9]+', '-', 'g')) || '-' || left(id::text,6) WHERE slug=''`;
 
 const profiles = [

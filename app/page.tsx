@@ -32,6 +32,7 @@ type Lawyer = {
   credentials: string;
   tags: string[];
   post: string;
+  postSlug?: string;
   keywords: string[];
   profilePhotoUrl?: string;
   coverPhotoUrl?: string;
@@ -738,12 +739,21 @@ export default function Home() {
                       <strong>{lawyer.availability}</strong>
                     </div>
                     <div className="card-actions">
-                      <button
-                        className="card-button"
-                        onClick={() => showProfile(lawyer)}
-                      >
-                        View profile
-                      </button>
+                      {lawyer.slug ? (
+                        <Link
+                          className="card-button profile-card-link"
+                          href={`/lawyers/${lawyer.slug}`}
+                        >
+                          View profile
+                        </Link>
+                      ) : (
+                        <button
+                          className="card-button"
+                          onClick={() => showProfile(lawyer)}
+                        >
+                          View profile
+                        </button>
+                      )}
                       <button
                         className={
                           selected === lawyer.name
@@ -930,7 +940,11 @@ function PublicProfile({
           <div className="article-card">
             <small>{lawyer.practice} · 4 min read</small>
             <h3>{lawyer.post}</h3>
-            <span>Read article →</span>
+            {lawyer.postSlug ? (
+              <Link href={`/articles/${lawyer.postSlug}`}>Read article →</Link>
+            ) : (
+              <span>Read article →</span>
+            )}
           </div>
         </div>
       </div>

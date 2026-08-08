@@ -26,6 +26,8 @@ type Profile = {
   tags: string[];
   profile_photo_url: string;
   cover_photo_url: string;
+  photo_settings: { position: number; zoom: number };
+  cover_settings: { position: number; zoom: number };
   tagline: string;
   firm_name: string;
   website: string;
@@ -52,6 +54,8 @@ const blankProfile: Profile = {
   tags: [],
   profile_photo_url: "",
   cover_photo_url: "",
+  photo_settings: { position: 50, zoom: 100 },
+  cover_settings: { position: 50, zoom: 100 },
   tagline: "",
   firm_name: "",
   website: "",
@@ -96,6 +100,14 @@ export default function Dashboard() {
         tags: data.profile.tags || [],
         awards: data.profile.awards || [],
         services: data.profile.services || [],
+        photo_settings: data.profile.photo_settings || {
+          position: 50,
+          zoom: 100,
+        },
+        cover_settings: data.profile.cover_settings || {
+          position: 50,
+          zoom: 100,
+        },
       });
     else setProfile((current) => ({ ...current, name: data.account.name }));
     setStatus("");
@@ -124,8 +136,10 @@ export default function Dashboard() {
       ),
     [profile],
   );
-  const update = (key: keyof Profile, value: string | boolean | string[]) =>
-    setProfile((current) => ({ ...current, [key]: value }));
+  const update = (
+    key: keyof Profile,
+    value: string | boolean | string[] | { position: number; zoom: number },
+  ) => setProfile((current) => ({ ...current, [key]: value }));
 
   async function saveProfile(publish = profile.published) {
     setStatus(publish ? "Publishing profile…" : "Saving profile…");
@@ -152,6 +166,14 @@ export default function Dashboard() {
       tags: data.profile.tags || [],
       awards: data.profile.awards || [],
       services: data.profile.services || [],
+      photo_settings: data.profile.photo_settings || {
+        position: 50,
+        zoom: 100,
+      },
+      cover_settings: data.profile.cover_settings || {
+        position: 50,
+        zoom: 100,
+      },
     });
     setStatus(publish ? "Profile published ✓" : "All changes saved ✓");
   }
@@ -327,12 +349,20 @@ export default function Dashboard() {
                     shape="portrait"
                     value={profile.profile_photo_url}
                     onChange={(url) => update("profile_photo_url", url)}
+                    settings={profile.photo_settings}
+                    onSettings={(settings) =>
+                      update("photo_settings", settings)
+                    }
                   />
                   <MediaUpload
                     label="Profile cover"
                     purpose="profile-cover"
                     value={profile.cover_photo_url}
                     onChange={(url) => update("cover_photo_url", url)}
+                    settings={profile.cover_settings}
+                    onSettings={(settings) =>
+                      update("cover_settings", settings)
+                    }
                   />
                 </div>
               </EditorSection>
@@ -584,6 +614,10 @@ function ProfilePreview({ profile }: { profile: Profile }) {
             alt=""
             fill
             sizes="360px"
+            style={{
+              objectPosition: `50% ${profile.cover_settings.position}%`,
+              transform: `scale(${profile.cover_settings.zoom / 100})`,
+            }}
             unoptimized
           />
         </div>
@@ -596,6 +630,10 @@ function ProfilePreview({ profile }: { profile: Profile }) {
             alt={profile.name}
             width={55}
             height={55}
+            style={{
+              objectPosition: `50% ${profile.photo_settings.position}%`,
+              transform: `scale(${profile.photo_settings.zoom / 100})`,
+            }}
             unoptimized
           />
         ) : (

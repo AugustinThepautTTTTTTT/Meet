@@ -28,6 +28,8 @@ export async function POST(request: Request) {
   await sql`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS awards text[] NOT NULL DEFAULT '{}'`;
   await sql`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS services text[] NOT NULL DEFAULT '{}'`;
   await sql`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS consultation_format text NOT NULL DEFAULT 'Video or in person'`;
+  await sql`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS photo_settings jsonb NOT NULL DEFAULT '{"position":50,"zoom":100}'::jsonb`;
+  await sql`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS cover_settings jsonb NOT NULL DEFAULT '{"position":50,"zoom":100}'::jsonb`;
   await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS excerpt text NOT NULL DEFAULT ''`;
   await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`;
   await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS slug text NOT NULL DEFAULT ''`;
@@ -35,6 +37,7 @@ export async function POST(request: Request) {
   await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS content jsonb NOT NULL DEFAULT '[]'::jsonb`;
   await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS theme text NOT NULL DEFAULT 'editorial'`;
   await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS author_note text NOT NULL DEFAULT ''`;
+  await sql`ALTER TABLE posts ADD COLUMN IF NOT EXISTS cover_settings jsonb NOT NULL DEFAULT '{"position":50,"zoom":100}'::jsonb`;
   await sql`UPDATE posts SET slug=trim(both '-' from regexp_replace(lower(title),'[^a-z0-9]+','-','g'))||'-'||left(id::text,6) WHERE slug=''`;
   return NextResponse.json({ ok: true });
 }
