@@ -4,7 +4,7 @@ import { getLawyerDb } from "@/lib/database";
 
 function authorized(request: Request) {
   const supplied = Buffer.from(request.headers.get("x-migration-key") || "");
-  const expected = Buffer.from(process.env.AUTH_SECRET || "");
+  const expected = Buffer.from(process.env.MIGRATION_SECRET || "");
   return (
     supplied.length > 0 &&
     supplied.length === expected.length &&
