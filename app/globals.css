@@ -45,6 +45,7 @@ nav { display: flex; gap: 32px; height: 100%; }
 .nav-link.active { font-weight: 650; }
 .nav-link.active::after { background: var(--ink); }
 .account-button { justify-self: end; border: 1px solid var(--ink); border-radius: 999px; background: transparent; padding: 9px 18px; cursor: pointer; font-size: 13px; font-weight: 650; }
+.status-pill { cursor: default; border-color: #aac9bc; background: var(--mint); color: var(--green); }
 
 .hero { min-height: 760px; text-align: center; padding: 80px 20px 88px; position: relative; overflow: hidden; }
 .hero::before { content: ""; position: absolute; width: 520px; height: 520px; border-radius: 50%; background: #e7eee8; filter: blur(1px); top: 130px; left: -310px; opacity: .75; }

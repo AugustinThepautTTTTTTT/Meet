@@ -111,7 +111,7 @@ export default function Home() {
         <button className={view === "client" ? "nav-link active":"nav-link"} onClick={() => {setView("client");setActiveLawyer(null)}}>Find a lawyer</button>
         <button className={view === "lawyer" ? "nav-link active":"nav-link"} onClick={() => {setView("lawyer");setActiveLawyer(null)}}>For lawyers</button>
       </nav>
-      <button className="account-button">Sign in</button>
+      <span className="account-button status-pill">Live demo</span>
     </header>
 
     {view === "client" && activeLawyer ? <PublicProfile lawyer={activeLawyer} onBack={() => setActiveLawyer(null)} onContact={() => openContact(activeLawyer)} /> : view === "client" ? <>
