@@ -1,6 +1,9 @@
 # Meet
 
-Meet is a proof-of-concept legal matching platform. Clients describe a legal problem and receive a deterministic shortlist of relevant lawyers. Lawyers can prepare, edit, publish, and update profiles, including practice details and an educational post.
+Meet is a proof-of-concept legal matching platform. Clients describe a legal
+problem and receive a deterministic shortlist of relevant lawyers. Lawyers can
+prepare, edit, publish, and update profiles, including practice details and an
+educational post.
 
 ## What works
 
@@ -35,4 +38,6 @@ npm run lint
 npm run build
 ```
 
-The current matching algorithm is intentionally deterministic. Replace `detectPractice` and the ranking function in `app/page.tsx` when the LLM matching service is ready.
+The current matching algorithm is intentionally deterministic. Replace
+`detectPractice` and the ranking function in `app/page.tsx` when the LLM
+matching service is ready.
