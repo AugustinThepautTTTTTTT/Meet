@@ -708,6 +708,8 @@ export default function Home() {
           const message = JSON.parse(line);
           if (message.type === "trace")
             setAiActivity({ stage: "understanding", label: message.label, generationId: message.generationId });
+          if (message.type === "text-delta")
+            setIntake((current) => ({ ...(current || {}), assistantMessage: message.text } as IntakeState));
           if (message.type === "partial" && message.intake)
             setIntake((current) => ({ ...(current || {}), ...message.intake } as IntakeState));
           if (message.type === "complete") {
@@ -1560,10 +1562,14 @@ function ChatIntake({
   error: boolean;
 }) {
   const { locale } = useLocale();
-  const readableDocuments = documents.filter((document) =>
-    document.analysis.relevantFacts.length > 0,
-  );
   const [answer, setAnswer] = useState("");
+  const [traceSeconds, setTraceSeconds] = useState(0);
+  useEffect(() => {
+    if (aiActivity.stage !== "understanding") return;
+    const started = Date.now();
+    const timer = window.setInterval(() => setTraceSeconds(Math.floor((Date.now() - started) / 1000)), 250);
+    return () => window.clearInterval(timer);
+  }, [aiActivity.generationId, aiActivity.stage]);
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!answer.trim()) return;
@@ -1590,14 +1596,6 @@ function ChatIntake({
           </div>
           {documents.length ? (
             <div className="chat-documents initial-documents">
-              <div className="chat-row meet document-note">
-                <span>M</span>
-                <p>{readableDocuments.length
-                  ? locale === "fr"
-                    ? `${documents.some((document) => document.analysis.analysisMode === "deep") ? "J’ai terminé l’étude approfondie" : "J’ai extrait les éléments utiles"} ${documents.length === 1 ? "du document" : "des documents"}. Je m’appuierai sur cette analyse et ne vous interrogerai que sur ce qui n’y figure réellement pas.`
-                    : `I’ve read the useful facts from ${documents.length === 1 ? "this document" : "these documents"}. I’ll only ask about missing or ambiguous details, and share the originals with your lawyer.`
-                  : locale === "fr" ? "Je n’ai pas pu extraire de texte fiable de ce document. L’original sera néanmoins transmis à votre avocat." : "I could not read text from this document, so I’ll ask you for the essential facts. The original will still be shared with your lawyer."}</p>
-              </div>
               {documents.map((document) => (
                 <article key={document.id}>
                   <div><span>{document.filename.split(".").pop()?.toUpperCase()}</span><strong>{document.filename}</strong></div>
@@ -1643,7 +1641,7 @@ function ChatIntake({
                 <div className="ai-generation-trace" role="status">
                   <span className="streaming-dot" />
                   <span>{aiActivity.label}</span>
-                  <small>Gemini 3.5 Flash · streaming</small>
+                  <small>Gemini 3.5 Flash · {traceSeconds}s · streaming</small>
                 </div>
               ) : aiActivity.trace ? (
                 <details className="ai-generation-trace complete">
