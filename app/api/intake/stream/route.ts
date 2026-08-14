@@ -60,7 +60,7 @@ export async function POST(request: Request) {
   }));
 
   const result = streamText({
-    model: google.interactions("gemini-3.5-flash"),
+    model: google("gemini-3.5-flash"),
     output: Output.object({ schema: intakeStateSchema }),
     maxOutputTokens: 2200,
     temperature: 0.2,
