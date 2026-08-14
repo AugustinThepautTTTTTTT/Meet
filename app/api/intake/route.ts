@@ -167,7 +167,7 @@ export async function POST(request: Request) {
       .map((item, index) => `${index + 1}. Q:${item.question}\nA:${item.answer}`)
       .join("\n");
     const { output, usage } = await generateText({
-      model: google("gemini-2.5-flash"),
+      model: google("gemini-3.5-flash"),
       output: Output.object({ schema: intakeStateSchema }),
       maxOutputTokens: 1600,
       temperature: 0.1,

@@ -205,7 +205,7 @@ export async function POST(request: Request) {
     }
 
     const { output, usage } = await generateText({
-      model: google("gemini-2.5-flash"),
+      model: google("gemini-3.5-flash"),
       output: Output.object({ schema: rankingSchema }),
       maxOutputTokens: 420,
       temperature: 0.1,

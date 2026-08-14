@@ -97,7 +97,7 @@ export async function POST(request: Request) {
 
     const query = [name, firm, location, website, linkedin].filter(Boolean).join(" · ");
     const research = await generateText({
-      model: google("gemini-2.5-flash"),
+      model: google("gemini-3.5-flash"),
       tools: { google_search: google.tools.googleSearch({}) as never },
       maxOutputTokens: 2400,
       temperature: 0.1,
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
       }] : [])
       .slice(0, 10);
     const { output } = await generateText({
-      model: google("gemini-2.5-flash"),
+      model: google("gemini-3.5-flash"),
       output: Output.object({ schema: profileResearchSchema }),
       maxOutputTokens: 1400,
       temperature: 0.1,

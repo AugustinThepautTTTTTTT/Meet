@@ -99,7 +99,7 @@ async function analyzeDocument(
     throw new Error("Gemini document analysis is not configured.");
   try {
     const { output } = await generateText({
-      model: google("gemini-2.5-flash"),
+      model: google("gemini-3.5-flash"),
       output: Output.object({ schema: documentAnalysisSchema }),
       maxOutputTokens: 5000,
       temperature: 0.1,
@@ -128,8 +128,8 @@ ${locale === "fr" ? "Write all analysis in precise, natural French." : "Write al
       parties: output.parties.slice(0, 20),
       questionsRaised: [],
       extractionNotice: mediaType === "application/pdf"
-        ? "Document complet lu directement par Gemini 2.5 Flash."
-        : "Document complet analysé par Gemini 2.5 Flash.",
+        ? "Document complet lu directement par Gemini 3.5 Flash."
+        : "Document complet analysé par Gemini 3.5 Flash.",
     };
   } catch (error) {
     console.error("intake_document_analysis_failed", error);
@@ -164,7 +164,7 @@ export async function POST(request: Request) {
     const analysis = {
       ...(await analyzeDocument(file.name, extractedText, locale, bytes, file.type)),
       analysisMode: "deep",
-      analysisProvider: "gemini-2.5-flash",
+      analysisProvider: "gemini-3.5-flash",
     };
     const accessToken = randomBytes(32).toString("hex");
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-").slice(-100);
