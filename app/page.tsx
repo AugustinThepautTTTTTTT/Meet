@@ -517,6 +517,12 @@ export default function Home() {
   const [brief, setBrief] = useState<CaseBrief | null>(null);
   const [exchanges, setExchanges] = useState<IntakeExchange[]>([]);
   const [intake, setIntake] = useState<IntakeState | null>(null);
+  const [aiActivity, setAiActivity] = useState<{
+    stage: "idle" | "understanding" | "matching" | "error";
+    label: string;
+    generationId?: string;
+    trace?: { model: string; durationMs: number; ttftMs: number | null; inputTokens?: number; outputTokens?: number };
+  }>({ stage: "idle", label: "" });
   const [intakeDocuments, setIntakeDocuments] = useState<IntakeDocument[]>([]);
   const [documentStatus, setDocumentStatus] = useState<"idle" | "uploading" | "error">("idle");
   const [documentError, setDocumentError] = useState("");
@@ -669,8 +675,12 @@ export default function Home() {
     activeDocuments = intakeDocuments,
   ) {
     setCaseStatus("saving");
+    setAiActivity({
+      stage: "understanding",
+      label: locale === "fr" ? "Compréhension de votre message…" : "Understanding your message…",
+    });
     try {
-      const response = await fetch("/api/intake", {
+      const response = await fetch("/api/intake/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -680,14 +690,47 @@ export default function Home() {
           documents: activeDocuments.map(({ id, token }) => ({ id, token })),
         }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      setIntake(data.intake);
-      if (data.intake.ready)
-        await finishConversation(data.intake, nextExchanges, activeDocuments);
+      if (!response.ok || !response.body) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Stream unavailable");
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let completed: IntakeState | null = null;
+      while (true) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const message = JSON.parse(line);
+          if (message.type === "trace")
+            setAiActivity({ stage: "understanding", label: message.label, generationId: message.generationId });
+          if (message.type === "partial" && message.intake)
+            setIntake((current) => ({ ...(current || {}), ...message.intake } as IntakeState));
+          if (message.type === "complete") {
+            completed = message.intake;
+            setIntake(message.intake);
+            setAiActivity({
+              stage: "idle",
+              label: locale === "fr" ? "Réponse générée" : "Reply generated",
+              generationId: message.generationId,
+              trace: message.trace,
+            });
+          }
+          if (message.type === "error") throw new Error(message.message);
+        }
+        if (done) break;
+      }
+      if (!completed) throw new Error("Incomplete generation");
+      if (completed.ready)
+        await finishConversation(completed, nextExchanges, activeDocuments);
       else setCaseStatus("idle");
     } catch {
       setCaseStatus("error");
+      setAiActivity({ stage: "error", label: locale === "fr" ? "La génération a échoué — réessayez." : "Generation failed — please retry." });
     }
   }
 
@@ -698,6 +741,7 @@ export default function Home() {
   ) {
     const description = submittedProblem || problem.trim();
     setCaseStatus("saving");
+    setAiActivity({ stage: "matching", label: locale === "fr" ? "Comparaison avec les profils d’avocats…" : "Comparing lawyer profiles…" });
     try {
       const completedBrief: CaseBrief = {
         summary: finalIntake.summary || description,
@@ -776,6 +820,7 @@ export default function Home() {
       setBrief(completedBrief);
       setClientStep("matches");
       setCaseStatus("saved");
+      setAiActivity((current) => ({ ...current, stage: "idle", label: locale === "fr" ? "Sélection prête" : "Shortlist ready" }));
       window.setTimeout(
         () =>
           document
@@ -785,6 +830,7 @@ export default function Home() {
       );
     } catch {
       setCaseStatus("error");
+      setAiActivity({ stage: "error", label: locale === "fr" ? "La sélection n’a pas pu être préparée." : "The shortlist could not be prepared." });
     }
   }
 
@@ -1132,11 +1178,12 @@ export default function Home() {
               documents={intakeDocuments}
               documentStatus={documentStatus}
               documentError={documentError}
+              aiActivity={aiActivity}
               onAnswer={answerChatQuestion}
               onUpload={uploadIntakeDocument}
               onRemoveDocument={removeIntakeDocument}
               onRestart={() => setClientStep("describe")}
-              finishing={caseStatus === "saving"}
+              finishing={aiActivity.stage === "matching"}
               error={caseStatus === "error"}
             />
           ) : null}
@@ -1484,6 +1531,7 @@ function ChatIntake({
   documents,
   documentStatus,
   documentError,
+  aiActivity,
   onAnswer,
   onUpload,
   onRemoveDocument,
@@ -1498,6 +1546,12 @@ function ChatIntake({
   documents: IntakeDocument[];
   documentStatus: "idle" | "uploading" | "error";
   documentError: string;
+  aiActivity: {
+    stage: "idle" | "understanding" | "matching" | "error";
+    label: string;
+    generationId?: string;
+    trace?: { model: string; durationMs: number; ttftMs: number | null; inputTokens?: number; outputTokens?: number };
+  };
   onAnswer: (answer: string) => void;
   onUpload: (file: File) => void;
   onRemoveDocument: (document: IntakeDocument) => void;
@@ -1523,12 +1577,12 @@ function ChatIntake({
         <header>
           <div className="meet-chat-avatar">M</div>
           <div>
-            <strong>Meet assistant</strong>
+            <strong>{locale === "fr" ? "Assistant Meet" : "Meet assistant"}</strong>
             <span>
-              <i /> Understanding your {practice.toLowerCase()} matter
+              <i /> {locale === "fr" ? "Compréhension de votre situation" : `Understanding your ${practice.toLowerCase()} matter`}
             </span>
           </div>
-          <small>Private, document-aware conversation</small>
+          <small>{locale === "fr" ? "Conversation privée tenant compte de vos documents" : "Private, document-aware conversation"}</small>
         </header>
         <div className="chat-transcript" aria-live="polite">
           <div className="chat-row user">
@@ -1581,10 +1635,22 @@ function ChatIntake({
             <div>
               <p className="chat-assistant-message">
                 {finishing
-                  ? "I’m checking the essential facts and preparing your shortlist."
+                  ? locale === "fr" ? "Votre dossier est suffisamment clair. Je compare maintenant les profils publiés pour identifier les avocats les plus pertinents." : "Your matter is clear enough. I’m now comparing published profiles to identify the most relevant lawyers."
                   : intake?.assistantMessage ||
-                    "I’m reading what you shared and identifying what matters for the right introduction."}
+                    (locale === "fr" ? "Je lis votre message et j’organise les éléments utiles pour vous orienter correctement…" : "I’m reading your message and organising what matters for the right introduction…")}
               </p>
+              {aiActivity.stage === "understanding" ? (
+                <div className="ai-generation-trace" role="status">
+                  <span className="streaming-dot" />
+                  <span>{aiActivity.label}</span>
+                  <small>Gemini 3.5 Flash · streaming</small>
+                </div>
+              ) : aiActivity.trace ? (
+                <details className="ai-generation-trace complete">
+                  <summary>{locale === "fr" ? "Détails de génération" : "Generation details"}</summary>
+                  <span>{aiActivity.trace.model} · {(aiActivity.trace.durationMs / 1000).toFixed(1)} s{aiActivity.trace.ttftMs ? ` · 1er texte ${(aiActivity.trace.ttftMs / 1000).toFixed(1)} s` : ""}</span>
+                </details>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1602,7 +1668,7 @@ function ChatIntake({
                     event.target.value = "";
                   }}
                 />
-                <span>＋</span> {documentStatus === "uploading" ? "Reading document…" : "Add a document"}
+                <span>＋</span> {documentStatus === "uploading" ? (locale === "fr" ? "Analyse approfondie…" : "Reading document…") : (locale === "fr" ? "Ajouter un document" : "Add a document")}
               </label>
               <small>{documents.length}/3 · PDF, DOCX or TXT · 8 MB max</small>
             </div>
@@ -1621,16 +1687,17 @@ function ChatIntake({
                   aria-label="Your answer"
                   value={answer}
                   onChange={(event) => setAnswer(event.target.value)}
-                  placeholder="Type your answer…"
+                  placeholder={locale === "fr" ? "Écrivez votre réponse…" : "Type your answer…"}
+                  disabled={aiActivity.stage === "understanding"}
                 />
-                <button type="submit" aria-label="Send answer">
+                <button type="submit" aria-label="Send answer" disabled={aiActivity.stage === "understanding"}>
                   ↑
                 </button>
               </form>
             )}
-            <p className="chat-ai-file-note">Meet extracts relevant facts with AI. The original stays private and is shared only with the lawyer you contact.</p>
+            <p className="chat-ai-file-note">{locale === "fr" ? "Meet extrait les faits utiles avec l’IA. L’original reste privé et n’est transmis qu’à l’avocat contacté." : "Meet extracts relevant facts with AI. The original stays private and is shared only with the lawyer you contact."}</p>
             <button className="chat-restart" onClick={onRestart}>
-              ← Change my first message
+              ← {locale === "fr" ? "Modifier mon premier message" : "Change my first message"}
             </button>
           </div>
         ) : (
@@ -1638,45 +1705,45 @@ function ChatIntake({
             <i />
             <i />
             <i />
-            <span>Preparing your brief and shortlist…</span>
+            <span>{locale === "fr" ? "Comparaison avec les profils d’avocats…" : "Preparing your brief and shortlist…"}</span>
           </div>
         )}
         {error ? (
           <div className="chat-error">
-            Meet couldn’t prepare the shortlist. Your answers are still here.
+            {locale === "fr" ? "Meet n’a pas pu terminer cette étape. Vos réponses sont conservées : vous pouvez réessayer." : "Meet couldn’t complete this step. Your answers are still here, so you can retry."}
           </div>
         ) : null}
       </div>
       <aside className="live-case-summary" aria-live="polite">
         <header>
-          <span>Live case summary</span>
+          <span>{locale === "fr" ? "Synthèse en direct" : "Live case summary"}</span>
           <i className={intake ? "active" : ""} />
         </header>
-        <h2>{intake?.dispute || "Understanding your situation"}</h2>
+        <h2>{intake?.dispute || (locale === "fr" ? "Compréhension de votre situation" : "Understanding your situation")}</h2>
         <p className="live-summary-copy">
-          {intake?.summary || "As you talk, Meet will organise the important facts here without interrupting the conversation."}
+          {intake?.summary || (locale === "fr" ? "Au fil de l’échange, Meet organise ici les faits importants sans interrompre la conversation." : "As you talk, Meet will organise the important facts here without interrupting the conversation.")}
         </p>
         {intake?.keyFacts?.length ? (
           <section>
-            <h3>What we understand</h3>
+            <h3>{locale === "fr" ? "Ce que nous avons compris" : "What we understand"}</h3>
             <ul>{intake.keyFacts.slice(0, 5).map((fact) => <li key={fact}>{fact}</li>)}</ul>
           </section>
         ) : null}
         <div className="live-summary-meta">
-          <div><small>Legal area</small><strong>{intake?.legalDomain || (intake?.practice === "Other" ? "Being identified" : intake?.practice) || "Being identified"}</strong></div>
-          <div><small>Jurisdiction</small><strong>{intake?.jurisdiction && intake.jurisdiction !== "Not confirmed" ? intake.jurisdiction : "Not clear yet"}</strong></div>
-          <div><small>Timing</small><strong>{intake?.deadline && !/no deadline/i.test(intake.deadline) ? intake.deadline : "Being assessed"}</strong></div>
-          <div><small>Desired outcome</small><strong>{intake?.desiredOutcome || "Not clear yet"}</strong></div>
+          <div><small>{locale === "fr" ? "Domaine juridique" : "Legal area"}</small><strong>{intake?.legalDomain || (intake?.practice === "Other" ? (locale === "fr" ? "En cours d’identification" : "Being identified") : intake?.practice) || (locale === "fr" ? "En cours d’identification" : "Being identified")}</strong></div>
+          <div><small>Juridiction</small><strong>{intake?.jurisdiction && intake.jurisdiction !== "Not confirmed" ? intake.jurisdiction : (locale === "fr" ? "À préciser" : "Not clear yet")}</strong></div>
+          <div><small>{locale === "fr" ? "Échéance" : "Timing"}</small><strong>{intake?.deadline && !/no deadline/i.test(intake.deadline) ? intake.deadline : (locale === "fr" ? "En cours d’évaluation" : "Being assessed")}</strong></div>
+          <div><small>{locale === "fr" ? "Objectif" : "Desired outcome"}</small><strong>{intake?.desiredOutcome || (locale === "fr" ? "À préciser" : "Not clear yet")}</strong></div>
           {intake?.courtOrProcedure && !/à déterminer|not confirmed/i.test(intake.courtOrProcedure) ? <div><small>Jurisdiction or procedure</small><strong>{intake.courtOrProcedure}</strong></div> : null}
           {intake?.territorialBar && !/à confirmer|not confirmed/i.test(intake.territorialBar) ? <div><small>Relevant bar</small><strong>{intake.territorialBar}</strong></div> : null}
         </div>
         {intake?.missingInformation?.length ? (
           <section className="open-points">
-            <h3>Still useful to clarify</h3>
+            <h3>{locale === "fr" ? "Encore utile à préciser" : "Still useful to clarify"}</h3>
             <ul>{intake.missingInformation.slice(0, 3).map((item) => <li key={item}>{item}</li>)}</ul>
           </section>
         ) : null}
-        <footer>This summary is prepared for matching, not legal advice.</footer>
+        <footer>{locale === "fr" ? "Cette synthèse sert à la mise en relation ; elle ne constitue pas un conseil juridique." : "This summary is prepared for matching, not legal advice."}</footer>
       </aside>
       </div>
     </section>

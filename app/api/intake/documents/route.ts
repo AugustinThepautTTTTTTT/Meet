@@ -99,7 +99,7 @@ async function analyzeDocument(
     throw new Error("Gemini document analysis is not configured.");
   try {
     const { output } = await generateText({
-      model: google("gemini-3.5-flash"),
+      model: google.interactions("gemini-3.5-flash"),
       output: Output.object({ schema: documentAnalysisSchema }),
       maxOutputTokens: 5000,
       temperature: 0.1,
@@ -132,8 +132,22 @@ ${locale === "fr" ? "Write all analysis in precise, natural French." : "Write al
         : "Document complet analysé par Gemini 3.5 Flash.",
     };
   } catch (error) {
-    console.error("intake_document_analysis_failed", error);
-    return fallback;
+    console.error(JSON.stringify({
+      level: "error",
+      msg: "intake_document_analysis_failed",
+      route: "/api/intake/documents",
+      model: "gemini-3.5-flash",
+      filename,
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    return {
+      ...fallback,
+      summary: locale === "fr"
+        ? "L’analyse approfondie par Gemini a échoué. Le document original est conservé, mais Meet ne prétendra pas l’avoir lu. Réessayez l’envoi avant de poursuivre."
+        : "Gemini deep analysis failed. The original document is preserved, but Meet will not pretend it was read. Please retry the upload before continuing.",
+      extractionNotice: "analysis_failed",
+      relevantFacts: [],
+    };
   }
 }
 
