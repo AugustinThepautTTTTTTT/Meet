@@ -1,5 +1,6 @@
 import { google } from "@ai-sdk/google";
 import { Output, streamText } from "ai";
+import { z } from "zod";
 import { intakeStateSchema, MAX_INTAKE_TURNS, type IntakeExchange } from "@/lib/intake";
 import { compactDocumentEvidence, getIntakeDocuments, type IntakeDocumentRef } from "@/lib/intake-documents";
 
@@ -7,6 +8,20 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const encoder = new TextEncoder();
+// Put the conversational payload first so the client sees words as soon as the
+// model starts, while the silent case model continues to fill in afterwards.
+const streamingIntakeSchema = z.object({
+  assistantMessage: intakeStateSchema.shape.assistantMessage,
+  acknowledgement: intakeStateSchema.shape.acknowledgement,
+  nextQuestion: intakeStateSchema.shape.nextQuestion,
+  options: intakeStateSchema.shape.options,
+  ...intakeStateSchema.omit({
+    assistantMessage: true,
+    acknowledgement: true,
+    nextQuestion: true,
+    options: true,
+  }).shape,
+});
 
 function clean(value: unknown, max: number) {
   return String(value || "").trim().replace(/\s+/g, " ").slice(0, max);
@@ -61,7 +76,7 @@ export async function POST(request: Request) {
 
   const result = streamText({
     model: google("gemini-3.5-flash"),
-    output: Output.object({ schema: intakeStateSchema }),
+    output: Output.object({ schema: streamingIntakeSchema }),
     maxOutputTokens: 2200,
     temperature: 0.2,
     system: `You are Meet, a highly attentive legal-intake conversationalist for the French legal market. Today is ${today}. Never give legal advice, decide who is right, or predict an outcome. ${locale === "fr" ? "Every user-facing field MUST be in natural French. Never use English." : "Every user-facing field must be in English."}
