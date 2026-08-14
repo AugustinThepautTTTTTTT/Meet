@@ -1,4 +1,4 @@
-import { groq, type GroqLanguageModelChatOptions } from "@ai-sdk/groq";
+import { google } from "@ai-sdk/google";
 import { generateText, Output } from "ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -58,34 +58,11 @@ function safeUrl(value: unknown) {
   }
 }
 
-type Source = { title: string; url: string; domain: string };
-
-function collectSources(value: unknown, found = new Map<string, Source>()) {
-  if (!value || found.size >= 10) return found;
-  if (Array.isArray(value)) {
-    for (const item of value) collectSources(item, found);
-    return found;
-  }
-  if (typeof value !== "object") return found;
-  const record = value as Record<string, unknown>;
-  const url = safeUrl(record.url || record.link);
-  if (url && !found.has(url)) {
-    const parsed = new URL(url);
-    found.set(url, {
-      url,
-      domain: parsed.hostname.replace(/^www\./, ""),
-      title: clean(record.title || record.name || parsed.hostname, 140),
-    });
-  }
-  for (const child of Object.values(record)) collectSources(child, found);
-  return found;
-}
-
 export async function POST(request: Request) {
   const accountId = await getAccountId();
   if (!accountId)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!process.env.GROQ_API_KEY)
+  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY)
     return NextResponse.json({ error: "AI profile research is not configured." }, { status: 503 });
 
   try {
@@ -119,53 +96,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Enter your full professional name." }, { status: 400 });
 
     const query = [name, firm, location, website, linkedin].filter(Boolean).join(" · ");
-    const researchResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "groq/compound",
-        temperature: 0.1,
-        max_completion_tokens: 2200,
-        messages: [
-          {
-            role: "system",
-            content: "Research a lawyer's public professional profile. Search multiple authoritative sources: official law-firm biography, bar or regulator directory, professional directory, university or publication pages, and LinkedIn only when publicly accessible. Resolve identity carefully using firm, city and supplied URLs. Exclude home addresses, private phone numbers, family information, personal social media and unverifiable marketing claims. Never invent awards, case outcomes, years of experience, client claims or practice areas. Cite every factual paragraph and explicitly list uncertainty or conflicting sources.",
-          },
-          {
-            role: "user",
-            content: `Research this lawyer for a public profile draft.\nName: ${name}\nFirm: ${firm || "Not supplied"}\nLocation: ${location || "Not supplied"}\nOfficial website: ${website || "Not supplied"}\nLinkedIn: ${linkedin || "Not supplied"}\nReturn a concise research dossier with current role, admissions, practice, services, locations, languages, career timeline, education, recognition, and authoritative URLs.`,
-          },
-        ],
-      }),
+    const research = await generateText({
+      model: google("gemini-2.5-flash"),
+      tools: { google_search: google.tools.googleSearch({}) as never },
+      maxOutputTokens: 2400,
+      temperature: 0.1,
+      system: "Research a lawyer's public professional profile. Search multiple authoritative sources: official law-firm biography, bar or regulator directory, professional directory, university or publication pages, and LinkedIn only when publicly accessible. Resolve identity carefully using firm, city and supplied URLs. Exclude home addresses, private phone numbers, family information, personal social media and unverifiable marketing claims. Never invent awards, case outcomes, years of experience, client claims or practice areas. Cite every factual paragraph and explicitly list uncertainty or conflicting sources.",
+      prompt: `Research this lawyer for a public profile draft.\nName: ${name}\nFirm: ${firm || "Not supplied"}\nLocation: ${location || "Not supplied"}\nOfficial website: ${website || "Not supplied"}\nLinkedIn: ${linkedin || "Not supplied"}\nReturn a concise research dossier with current role, admissions, practice, services, locations, languages, career timeline, education, recognition, and authoritative URLs.`,
     });
-    if (!researchResponse.ok) {
-      const failure = await researchResponse.text();
-      console.error("profile_web_research_failed", researchResponse.status, failure.slice(0, 500));
-      return NextResponse.json({ error: "Web research could not be completed right now." }, { status: 502 });
-    }
-    const researchPayload = (await researchResponse.json()) as Record<string, unknown>;
-    const choices = researchPayload.choices as Array<{ message?: { content?: string; executed_tools?: unknown } }> | undefined;
-    const message = choices?.[0]?.message;
-    const researchText = clean(message?.content, 20_000);
+    const researchText = clean(research.text, 20_000);
     if (researchText.length < 100)
       return NextResponse.json({ error: "Not enough reliable public information was found. Add an official profile URL and retry." }, { status: 422 });
 
-    const sources = Array.from(collectSources(message?.executed_tools || researchPayload).values());
+    const sources = research.sources
+      .flatMap((source) => source.sourceType === "url" ? [{
+        url: source.url,
+        domain: new URL(source.url).hostname.replace(/^www\./, ""),
+        title: clean(source.title || new URL(source.url).hostname, 140),
+      }] : [])
+      .slice(0, 10);
     const { output } = await generateText({
-      model: groq("openai/gpt-oss-20b"),
+      model: google("gemini-2.5-flash"),
       output: Output.object({ schema: profileResearchSchema }),
       maxOutputTokens: 1400,
       temperature: 0.1,
-      providerOptions: {
-        groq: {
-          reasoningEffort: "low",
-          reasoningFormat: "hidden",
-          structuredOutputs: true,
-        } satisfies GroqLanguageModelChatOptions,
-      },
       system: `Turn a sourced research dossier into an editable lawyer profile. Use only facts explicitly supported by the dossier. Prefer current official sources over directories. Avoid superlatives, promises, ratings, case outcomes and unverifiable client claims. Keep the bio neutral, polished and 100-160 words. Reasons should describe verifiable fit, not praise. If a field is unsupported, leave it empty and list it in unsupportedClaims. Never infer languages, awards, admission, pricing or years of experience. consultation_format must be empty unless sourced. Classify practice using one allowed label.`,
       prompt: `Expected identity: ${query}\n\nSOURCED WEB RESEARCH START\n${researchText}\nSOURCED WEB RESEARCH END\n\nKnown source URLs:\n${sources.map((source) => `- ${source.title}: ${source.url}`).join("\n")}`,
     });

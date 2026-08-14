@@ -520,7 +520,6 @@ export default function Home() {
   const [intakeDocuments, setIntakeDocuments] = useState<IntakeDocument[]>([]);
   const [documentStatus, setDocumentStatus] = useState<"idle" | "uploading" | "error">("idle");
   const [documentError, setDocumentError] = useState("");
-  const [entryMode, setEntryMode] = useState<"chat" | "document">("chat");
   const [aiRankings, setAiRankings] = useState<AiRanking[]>([]);
   const [aiMatchingComplete, setAiMatchingComplete] = useState(false);
   const [view, setView] = useState<"client" | "lawyer">("client");
@@ -638,8 +637,8 @@ export default function Home() {
 
   async function findMatches(event: FormEvent) {
     event.preventDefault();
-    if (entryMode === "document" && intakeDocuments.length === 0) {
-      setDocumentError(locale === "fr" ? "Ajoutez un document pour commencer l’analyse approfondie." : "Add a document to begin the deep analysis.");
+    if (!problem.trim() && intakeDocuments.length === 0) {
+      setDocumentError(locale === "fr" ? "Décrivez votre situation ou ajoutez un document." : "Describe your situation or attach a document.");
       return;
     }
     const description =
@@ -799,7 +798,7 @@ export default function Home() {
     setExchanges(nextExchanges);
     void continueIntake(submittedProblem, nextExchanges);
   }
-  async function uploadIntakeDocument(file: File, analysisMode: "quick" | "deep" = entryMode === "document" ? "deep" : "quick") {
+  async function uploadIntakeDocument(file: File) {
     if (intakeDocuments.length >= 3) {
       setDocumentError("You can attach up to three focused documents.");
       setDocumentStatus("error");
@@ -811,7 +810,7 @@ export default function Home() {
       const form = new FormData();
       form.set("file", file);
       form.set("locale", locale);
-      form.set("analysisMode", analysisMode);
+      form.set("analysisMode", "deep");
       const response = await fetch("/api/intake/documents", { method: "POST", body: form });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Document could not be read.");
@@ -1015,16 +1014,7 @@ export default function Home() {
             <div className="hero-workspace">
               {clientStep === "describe" ? (
               <form className="intake-card" onSubmit={findMatches}>
-                <div className="intake-entry-modes" role="tablist" aria-label={locale === "fr" ? "Choisir comment commencer" : "Choose how to begin"}>
-                  <button type="button" role="tab" aria-selected={entryMode === "chat"} className={entryMode === "chat" ? "active" : ""} onClick={() => { setEntryMode("chat"); setDocumentError(""); }}>
-                    <span>01</span><strong>{locale === "fr" ? "Décrire ma situation" : "Describe my situation"}</strong><small>{locale === "fr" ? "Une conversation simple, avec vos propres mots" : "A simple conversation in your own words"}</small>
-                  </button>
-                  <button type="button" role="tab" aria-selected={entryMode === "document"} className={entryMode === "document" ? "active" : ""} onClick={() => { setEntryMode("document"); setProblem(""); setDocumentError(""); }}>
-                    <span>02</span><strong>{locale === "fr" ? "Commencer par un document" : "Start from a document"}</strong><small>{locale === "fr" ? "Une étude approfondie avant la conversation" : "A deep study before the conversation"}</small>
-                  </button>
-                </div>
-                {entryMode === "chat" ? <>
-                  <label htmlFor="problem">What do you need help with?</label>
+                  <label htmlFor="problem">{locale === "fr" ? "Pour quelle situation avez-vous besoin d’aide ?" : "What do you need help with?"}</label>
                   <textarea
                     id="problem"
                     value={problem}
@@ -1033,18 +1023,14 @@ export default function Home() {
                     rows={5}
                   />
                   <div className="textarea-meta">
-                    <span className="privacy-note"><span className="lock">⌁</span> Private & confidential</span>
-                    <span>{problem.length ? `${problem.length} characters` : "A few sentences is enough"}</span>
+                    <span className="privacy-note"><span className="lock">⌁</span> {locale === "fr" ? "Privé et confidentiel" : "Private & confidential"}</span>
+                    <span>{problem.length ? `${problem.length} ${locale === "fr" ? "caractères" : "characters"}` : locale === "fr" ? "Quelques phrases suffisent" : "A few sentences is enough"}</span>
                   </div>
-                </> : <div className="document-first-intro">
-                  <span>DOC</span>
-                  <div><strong>{locale === "fr" ? "Déposez le document qui décrit votre dossier" : "Upload the document describing your matter"}</strong><p>{locale === "fr" ? "Meet étudiera les parties, les faits, les demandes, la procédure, la chronologie et les questions juridiques apparentes. Cette analyse peut prendre quelques minutes." : "Meet will study the parties, facts, claims, procedure, chronology and apparent legal issues. This may take a few minutes."}</p></div>
-                </div>}
                 <div className="intake-document-upload">
                   <div className="intake-document-upload-heading">
                     <div>
-                      <strong>{entryMode === "document" ? (locale === "fr" ? "Document principal" : "Main document") : "Have a relevant document?"}</strong>
-                      <span>{entryMode === "document" ? (locale === "fr" ? "Analyse approfondie de l’intégralité du texte utile" : "Deep analysis of the complete useful text") : "Attach it now and Meet will use it to understand your situation."}</span>
+                      <strong>{locale === "fr" ? "Vous avez un document utile ?" : "Have a relevant document?"}</strong>
+                      <span>{locale === "fr" ? "Ajoutez-le : Gemini lira le document complet et l’intégrera à la conversation." : "Attach it: Gemini will read the complete document and use it in the conversation."}</span>
                     </div>
                     <label className={documentStatus === "uploading" || intakeDocuments.length >= 3 ? "disabled" : ""}>
                       <input
@@ -1053,11 +1039,11 @@ export default function Home() {
                         disabled={documentStatus === "uploading" || intakeDocuments.length >= 3}
                         onChange={(event) => {
                           const file = event.target.files?.[0];
-                          if (file) void uploadIntakeDocument(file, entryMode === "document" ? "deep" : "quick");
+                          if (file) void uploadIntakeDocument(file);
                           event.target.value = "";
                         }}
                       />
-                      <span>＋</span>{documentStatus === "uploading" ? (entryMode === "document" && locale === "fr" ? "Étude approfondie en cours…" : "Reading document…") : (entryMode === "document" && locale === "fr" ? "Choisir le document" : "Attach a document")}
+                      <span>＋</span>{documentStatus === "uploading" ? (locale === "fr" ? "Analyse en cours…" : "Reading document…") : (locale === "fr" ? "Joindre un document" : "Attach a document")}
                     </label>
                   </div>
                   {intakeDocuments.length ? (
@@ -1072,10 +1058,10 @@ export default function Home() {
                     </div>
                   ) : null}
                   {documentError ? <p role="alert">{documentError}</p> : null}
-                  <small>Optional · Up to 3 PDF, DOCX or TXT files · 8 MB each · Originals stay private</small>
+                  <small>{locale === "fr" ? "Facultatif · Jusqu’à 3 fichiers PDF, DOCX ou TXT · 8 Mo chacun · En mode Gemini gratuit, utilisez uniquement des documents de test ou anonymisés" : "Optional · Up to 3 PDF, DOCX or TXT files · 8 MB each · With the free Gemini tier, only use test or anonymised documents"}</small>
                 </div>
-                {entryMode === "chat" ? <div className="example-row">
-                  <small>Try an example</small>
+                <div className="example-row">
+                  <small>{locale === "fr" ? "Essayer un exemple" : "Try an example"}</small>
                   {examples.map(([label, value, frenchValue]) => (
                     <button
                       type="button"
@@ -1085,12 +1071,12 @@ export default function Home() {
                       {label}
                     </button>
                   ))}
-                </div> : null}
+                </div>
                 <button className="primary-button" type="submit" disabled={documentStatus === "uploading"}>
-                  {documentStatus === "uploading" ? (locale === "fr" ? "Analyse approfondie en cours…" : "Analysing your document…") : entryMode === "document" ? (locale === "fr" ? "Continuer avec l’étude du dossier" : "Continue with the document study") : "Start conversation"} <span>→</span>
+                  {documentStatus === "uploading" ? (locale === "fr" ? "Analyse du document en cours…" : "Analysing your document…") : (locale === "fr" ? "Démarrer la conversation" : "Start conversation")} <span>→</span>
                 </button>
                 <p className="form-footnote">
-                  {entryMode === "document" && locale === "fr" ? "Analyse privée · Le document original sera transmis uniquement à l’avocat choisi" : "Free to use · No commitment · Takes about 2 minutes"}
+                  {locale === "fr" ? "Gratuit · Sans engagement · Document facultatif" : "Free to use · No commitment · Document optional"}
                 </p>
               </form>
               ) : (

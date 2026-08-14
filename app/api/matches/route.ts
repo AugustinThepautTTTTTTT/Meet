@@ -1,4 +1,4 @@
-import { groq, type GroqLanguageModelChatOptions } from "@ai-sdk/groq";
+import { google } from "@ai-sdk/google";
 import { generateText, Output } from "ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -186,7 +186,7 @@ export async function POST(request: Request) {
       }))
       .sort((a, b) => b.score - a.score);
 
-    if (!process.env.GROQ_API_KEY) {
+    if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
       return NextResponse.json({
         rankings: deterministic.slice(0, 3).map((item, index) => ({
           ...item,
@@ -205,17 +205,10 @@ export async function POST(request: Request) {
     }
 
     const { output, usage } = await generateText({
-      model: groq("openai/gpt-oss-20b"),
+      model: google("gemini-2.5-flash"),
       output: Output.object({ schema: rankingSchema }),
       maxOutputTokens: 420,
       temperature: 0.1,
-      providerOptions: {
-        groq: {
-          reasoningEffort: "low",
-          reasoningFormat: "hidden",
-          structuredOutputs: true,
-        } satisfies GroqLanguageModelChatOptions,
-      },
       system: `Classe les meilleurs avocats pour cette demande juridique. ${locale === "fr" ? "Rédige toutes les raisons en français." : "Write every reason in English."} Utilise uniquement les profils fournis et renvoie au maximum trois slugs uniques. Évalue d'abord le domaine juridique français précis et l'expérience factuellement démontrée, puis l'ordre de juridiction, la procédure ou juridiction probable, la langue, les échéances et la disponibilité. Pour une affaire française, distingue conseil/plaidoirie et postulation territoriale : le choix de l'avocat est en principe libre, mais certains actes de représentation sont géographiquement limités au ressort de la cour d'appel et certaines procédures ont des règles particulières. Ne déduis jamais l'inscription à un barreau de la seule ville du cabinet ; utilise uniquement les credentials vérifiés et signale toute vérification nécessaire. Ne surpondère donc pas la proximité si aucune postulation n'est pertinente. retrievalScore et matchedTerms sont des indices ancrés dans les profils. N'invente aucune expérience, certification, spécialisation ni droit de postuler. Les scores expriment une confiance de mise en relation, jamais une prédiction juridique.`,
       prompt: `CASE\n${JSON.stringify({
         dispute: brief.dispute || brief.summary,
@@ -286,7 +279,7 @@ export async function POST(request: Request) {
     rankings.sort((a, b) => b.score - a.score);
     return NextResponse.json({
       rankings,
-      source: "groq",
+      source: "gemini",
       usage: {
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,

@@ -1,4 +1,4 @@
-import { groq, type GroqLanguageModelChatOptions } from "@ai-sdk/groq";
+import { google } from "@ai-sdk/google";
 import { generateText, Output } from "ai";
 import { NextResponse } from "next/server";
 import {
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
 
     const rawFallback = fallbackIntake(problem, exchanges, fallbackDocumentFacts);
     const fallback = locale === "fr" ? frenchFallback(rawFallback) : rawFallback;
-    if (!process.env.GROQ_API_KEY)
+    if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY)
       return NextResponse.json({ intake: fallback, source: "fallback" });
 
     const forceReady = exchanges.filter((item) => isMeaningfulIntakeAnswer(item.answer)).length >= MAX_INTAKE_TURNS;
@@ -167,17 +167,10 @@ export async function POST(request: Request) {
       .map((item, index) => `${index + 1}. Q:${item.question}\nA:${item.answer}`)
       .join("\n");
     const { output, usage } = await generateText({
-      model: groq("openai/gpt-oss-120b"),
+      model: google("gemini-2.5-flash"),
       output: Output.object({ schema: intakeStateSchema }),
       maxOutputTokens: 1600,
       temperature: 0.1,
-      providerOptions: {
-        groq: {
-          reasoningEffort: "low",
-          reasoningFormat: "hidden",
-          structuredOutputs: true,
-        } satisfies GroqLanguageModelChatOptions,
-      },
       system: `You are Meet, an attentive legal-intake conversationalist specialised in the French legal market. Extract facts but never give legal advice or predict outcomes. Today is ${today}. ${locale === "fr" ? "Write every user-facing and structured text field in natural, clear French." : "Write every field in English, while applying French-market analysis when France is relevant."}
 
 FRENCH LEGAL ROUTING
@@ -262,7 +255,7 @@ Update all structured fields in the background on every turn. The summary is a c
           };
     return NextResponse.json({
       intake: resolvedOutput,
-      source: "groq",
+      source: "gemini",
       usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens },
     });
   } catch (error) {
