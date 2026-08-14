@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Sans, Lora } from "next/font/google";
-import "./globals.css";
+import "./meet-styles.css";
+import { LocaleProvider } from "./components/locale-provider";
 
 const sans = DM_Sans({
   variable: "--font-sans",
@@ -16,18 +17,18 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL || "meet.vercel.app"}`,
   ),
-  title: "Meet — Find the right lawyer",
+  title: "Meet — Trouvez le bon avocat",
   description:
-    "Describe your legal problem and meet lawyers matched to your situation.",
+    "Décrivez votre situation juridique et rencontrez les avocats les plus adaptés.",
   openGraph: {
-    title: "Meet the right lawyer.",
-    description: "Clear legal help starts with the right introduction.",
+    title: "Rencontrez le bon avocat.",
+    description: "Un accompagnement juridique clair commence par la bonne mise en relation.",
     images: [{ url: "/og.png", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Meet the right lawyer.",
-    description: "Clear legal help starts with the right introduction.",
+    title: "Rencontrez le bon avocat.",
+    description: "Un accompagnement juridique clair commence par la bonne mise en relation.",
     images: ["/og.png"],
   },
   icons: {
@@ -40,8 +41,8 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className={`${sans.variable} ${serif.variable}`}>{children}</body>
+    <html lang="fr">
+      <body className={`${sans.variable} ${serif.variable}`}><LocaleProvider>{children}</LocaleProvider></body>
     </html>
   );
 }

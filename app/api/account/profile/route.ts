@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAccountId } from "@/lib/auth";
 import { getLawyerDb } from "@/lib/database";
+import { ensureLawyerWorkflowSchema } from "@/lib/workflow-schema";
 
 const text = (value: unknown, fallback = "") =>
   String(value || fallback).trim();
@@ -21,7 +22,30 @@ export async function PUT(request: Request) {
         { error: "Name and professional title are required." },
         { status: 400 },
       );
+    await ensureLawyerWorkflowSchema();
     const sql = getLawyerDb();
+    const currency = ["EUR", "USD", "GBP", "CHF"].includes(
+      String(p.consultation_currency),
+    )
+      ? String(p.consultation_currency)
+      : "EUR";
+    const firstConsultationFree = Boolean(p.first_consultation_free);
+    const priceCents = firstConsultationFree
+      ? 0
+      : Math.max(
+          0,
+          Math.min(1_000_000, Number(p.first_consultation_price_cents) || 0),
+        );
+    const priceLabel = firstConsultationFree
+      ? "First consultation free"
+      : priceCents > 0
+        ? `${new Intl.NumberFormat("en", { style: "currency", currency, maximumFractionDigits: priceCents % 100 ? 2 : 0 }).format(priceCents / 100)} · first consultation`
+        : "Contact for pricing";
+    if (p.published && !firstConsultationFree && priceCents <= 0)
+      return NextResponse.json(
+        { error: "Set a first consultation price or mark it as free." },
+        { status: 400 },
+      );
     const baseSlug =
       text(p.name)
         .toLowerCase()
@@ -37,9 +61,9 @@ export async function PUT(request: Request) {
       .slice(0, 2)
       .toUpperCase();
     const [profile] = await sql`
-      INSERT INTO lawyers (account_id,slug,initials,name,specialty,practice,location,languages,price,availability,accent,reasons,bio,experience,credentials,tags,keywords,published,profile_photo_url,cover_photo_url,tagline,firm_name,website,linkedin,education,awards,services,consultation_format,photo_settings,cover_settings)
-      VALUES (${accountId},${slug},${initials},${text(p.name)},${text(p.specialty)},${text(p.practice, "General")},${text(p.location, "Remote")},${text(p.languages, "English")},${text(p.price, "Contact for pricing")},${text(p.availability, "Within one business day")},${text(p.accent, "blue")},${reasons},${text(p.bio, "Clear, practical legal guidance.")},${text(p.experience, "Experienced")},${text(p.credentials, "Credentials pending verification")},${tags},${tags.map((tag) => tag.toLowerCase())},${Boolean(p.published)},${text(p.profile_photo_url)},${text(p.cover_photo_url)},${text(p.tagline)},${text(p.firm_name)},${text(p.website)},${text(p.linkedin)},${text(p.education)},${list(p.awards)},${list(p.services)},${text(p.consultation_format, "Video or in person")},${JSON.stringify(p.photo_settings || { position: 50, zoom: 100 })}::jsonb,${JSON.stringify(p.cover_settings || { position: 50, zoom: 100 })}::jsonb)
-      ON CONFLICT (account_id) DO UPDATE SET slug=EXCLUDED.slug,initials=EXCLUDED.initials,name=EXCLUDED.name,specialty=EXCLUDED.specialty,practice=EXCLUDED.practice,location=EXCLUDED.location,languages=EXCLUDED.languages,price=EXCLUDED.price,availability=EXCLUDED.availability,accent=EXCLUDED.accent,reasons=EXCLUDED.reasons,bio=EXCLUDED.bio,experience=EXCLUDED.experience,credentials=EXCLUDED.credentials,tags=EXCLUDED.tags,keywords=EXCLUDED.keywords,published=EXCLUDED.published,profile_photo_url=EXCLUDED.profile_photo_url,cover_photo_url=EXCLUDED.cover_photo_url,tagline=EXCLUDED.tagline,firm_name=EXCLUDED.firm_name,website=EXCLUDED.website,linkedin=EXCLUDED.linkedin,education=EXCLUDED.education,awards=EXCLUDED.awards,services=EXCLUDED.services,consultation_format=EXCLUDED.consultation_format,photo_settings=EXCLUDED.photo_settings,cover_settings=EXCLUDED.cover_settings,updated_at=now()
+      INSERT INTO lawyers (account_id,slug,initials,name,specialty,practice,location,languages,price,first_consultation_price_cents,consultation_currency,first_consultation_free,availability,accent,reasons,bio,experience,credentials,tags,keywords,published,profile_photo_url,cover_photo_url,tagline,firm_name,website,linkedin,education,awards,services,consultation_format,photo_settings,cover_settings)
+      VALUES (${accountId},${slug},${initials},${text(p.name)},${text(p.specialty)},${text(p.practice, "General")},${text(p.location, "Remote")},${text(p.languages, "English")},${priceLabel},${priceCents},${currency},${firstConsultationFree},${text(p.availability, "Within one business day")},${text(p.accent, "blue")},${reasons},${text(p.bio, "Clear, practical legal guidance.")},${text(p.experience, "Experienced")},${text(p.credentials, "Credentials pending verification")},${tags},${tags.map((tag) => tag.toLowerCase())},${Boolean(p.published)},${text(p.profile_photo_url)},${text(p.cover_photo_url)},${text(p.tagline)},${text(p.firm_name)},${text(p.website)},${text(p.linkedin)},${text(p.education)},${list(p.awards)},${list(p.services)},${text(p.consultation_format, "Video or in person")},${JSON.stringify(p.photo_settings || { position: 50, zoom: 100 })}::jsonb,${JSON.stringify(p.cover_settings || { position: 50, zoom: 100 })}::jsonb)
+      ON CONFLICT (account_id) DO UPDATE SET slug=EXCLUDED.slug,initials=EXCLUDED.initials,name=EXCLUDED.name,specialty=EXCLUDED.specialty,practice=EXCLUDED.practice,location=EXCLUDED.location,languages=EXCLUDED.languages,price=EXCLUDED.price,first_consultation_price_cents=EXCLUDED.first_consultation_price_cents,consultation_currency=EXCLUDED.consultation_currency,first_consultation_free=EXCLUDED.first_consultation_free,availability=EXCLUDED.availability,accent=EXCLUDED.accent,reasons=EXCLUDED.reasons,bio=EXCLUDED.bio,experience=EXCLUDED.experience,credentials=EXCLUDED.credentials,tags=EXCLUDED.tags,keywords=EXCLUDED.keywords,published=EXCLUDED.published,profile_photo_url=EXCLUDED.profile_photo_url,cover_photo_url=EXCLUDED.cover_photo_url,tagline=EXCLUDED.tagline,firm_name=EXCLUDED.firm_name,website=EXCLUDED.website,linkedin=EXCLUDED.linkedin,education=EXCLUDED.education,awards=EXCLUDED.awards,services=EXCLUDED.services,consultation_format=EXCLUDED.consultation_format,photo_settings=EXCLUDED.photo_settings,cover_settings=EXCLUDED.cover_settings,updated_at=now()
       RETURNING *`;
     return NextResponse.json({ profile });
   } catch (error) {

@@ -77,7 +77,7 @@ export default async function ArticlePage({
                 fill
                 sizes="100vw"
                 style={{
-                  objectPosition: `50% ${article.cover_settings?.position ?? 50}%`,
+                  objectPosition: `${article.cover_settings?.x ?? 50}% ${article.cover_settings?.y ?? article.cover_settings?.position ?? 50}%`,
                   transform: `scale(${(article.cover_settings?.zoom ?? 100) / 100})`,
                 }}
                 unoptimized

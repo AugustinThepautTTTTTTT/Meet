@@ -16,6 +16,28 @@ await clients`CREATE TABLE IF NOT EXISTS cases (
   detected_practice text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 )`;
+await clients`ALTER TABLE cases ADD COLUMN IF NOT EXISTS brief jsonb NOT NULL DEFAULT '{}'::jsonb`;
+await clients`ALTER TABLE cases ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'intake'`;
+await clients`ALTER TABLE cases ADD COLUMN IF NOT EXISTS client_name text NOT NULL DEFAULT ''`;
+await clients`ALTER TABLE cases ADD COLUMN IF NOT EXISTS client_email text NOT NULL DEFAULT ''`;
+await clients`ALTER TABLE cases ADD COLUMN IF NOT EXISTS selected_lawyer_slug text NOT NULL DEFAULT ''`;
+await clients`ALTER TABLE cases ADD COLUMN IF NOT EXISTS selected_lawyer_name text NOT NULL DEFAULT ''`;
+await clients`ALTER TABLE cases ADD COLUMN IF NOT EXISTS meeting_time text NOT NULL DEFAULT ''`;
+await clients`ALTER TABLE cases ADD COLUMN IF NOT EXISTS payment_status text NOT NULL DEFAULT 'not_required'`;
+await clients`ALTER TABLE cases ADD COLUMN IF NOT EXISTS payment_amount_cents integer`;
+await clients`ALTER TABLE cases ADD COLUMN IF NOT EXISTS payment_currency text NOT NULL DEFAULT 'EUR'`;
+await clients`ALTER TABLE cases ADD COLUMN IF NOT EXISTS stripe_checkout_session_id text NOT NULL DEFAULT ''`;
+await clients`ALTER TABLE cases ADD COLUMN IF NOT EXISTS stripe_checkout_url text NOT NULL DEFAULT ''`;
+await clients`ALTER TABLE cases ADD COLUMN IF NOT EXISTS stripe_payment_intent_id text NOT NULL DEFAULT ''`;
+await clients`ALTER TABLE cases ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`;
+await clients`CREATE TABLE IF NOT EXISTS intake_documents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), access_token_hash text NOT NULL,
+  case_id uuid REFERENCES cases(id) ON DELETE CASCADE, filename text NOT NULL,
+  blob_url text NOT NULL, mime_type text NOT NULL, size_bytes integer NOT NULL,
+  extracted_text text NOT NULL DEFAULT '', analysis jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+)`;
+await clients`CREATE INDEX IF NOT EXISTS intake_documents_case_idx ON intake_documents (case_id, created_at)`;
 await clients`CREATE TABLE IF NOT EXISTS contact_requests (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   lawyer_name text NOT NULL,
@@ -35,6 +57,9 @@ await lawyersDb`CREATE TABLE IF NOT EXISTS lawyers (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slug text UNIQUE NOT NULL, initials text NOT NULL,
   name text NOT NULL, specialty text NOT NULL, practice text NOT NULL, location text NOT NULL,
   languages text NOT NULL, match integer NOT NULL DEFAULT 92, price text NOT NULL,
+  first_consultation_price_cents integer,
+  consultation_currency text NOT NULL DEFAULT 'EUR',
+  first_consultation_free boolean NOT NULL DEFAULT false,
   availability text NOT NULL, accent text NOT NULL DEFAULT 'blue', reasons text[] NOT NULL DEFAULT '{}',
   bio text NOT NULL, experience text NOT NULL, credentials text NOT NULL, tags text[] NOT NULL DEFAULT '{}',
   keywords text[] NOT NULL DEFAULT '{}', published boolean NOT NULL DEFAULT false,
@@ -54,6 +79,18 @@ await lawyersDb`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS services text[] NOT
 await lawyersDb`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS consultation_format text NOT NULL DEFAULT 'Video or in person'`;
 await lawyersDb`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS photo_settings jsonb NOT NULL DEFAULT '{"position":50,"zoom":100}'::jsonb`;
 await lawyersDb`ALTER TABLE lawyers ADD COLUMN IF NOT EXISTS cover_settings jsonb NOT NULL DEFAULT '{"position":50,"zoom":100}'::jsonb`;
+await lawyersDb`CREATE TABLE IF NOT EXISTS profile_research_runs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id uuid NOT NULL REFERENCES lawyer_accounts(id) ON DELETE CASCADE,
+  query text NOT NULL, draft jsonb NOT NULL DEFAULT '{}'::jsonb,
+  sources jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+)`;
+await lawyersDb`CREATE INDEX IF NOT EXISTS profile_research_account_created_idx ON profile_research_runs (account_id, created_at DESC)`;
+await lawyersDb`UPDATE lawyers SET first_consultation_price_cents=(substring(price from '€([0-9]+)')::integer * 100),
+  consultation_currency='EUR' WHERE first_consultation_price_cents IS NULL AND price ~ '€[0-9]+'`;
+await lawyersDb`UPDATE lawyers SET first_consultation_free=true, first_consultation_price_cents=0
+  WHERE first_consultation_price_cents IS NULL AND lower(price) LIKE '%first%free%'`;
 await lawyersDb`CREATE TABLE IF NOT EXISTS posts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), lawyer_id uuid NOT NULL REFERENCES lawyers(id) ON DELETE CASCADE,
   title text NOT NULL, body text NOT NULL, published boolean NOT NULL DEFAULT false,
@@ -68,6 +105,46 @@ await lawyersDb`ALTER TABLE posts ADD COLUMN IF NOT EXISTS theme text NOT NULL D
 await lawyersDb`ALTER TABLE posts ADD COLUMN IF NOT EXISTS author_note text NOT NULL DEFAULT ''`;
 await lawyersDb`ALTER TABLE posts ADD COLUMN IF NOT EXISTS cover_settings jsonb NOT NULL DEFAULT '{"position":50,"zoom":100}'::jsonb`;
 await lawyersDb`UPDATE posts SET slug=trim(both '-' from regexp_replace(lower(title), '[^a-z0-9]+', '-', 'g')) || '-' || left(id::text,6) WHERE slug=''`;
+await lawyersDb`CREATE TABLE IF NOT EXISTS inquiries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), external_case_id uuid NOT NULL,
+  lawyer_id uuid NOT NULL REFERENCES lawyers(id) ON DELETE CASCADE,
+  client_name text NOT NULL, client_email text NOT NULL, brief jsonb NOT NULL DEFAULT '{}'::jsonb,
+  meeting_time text NOT NULL, status text NOT NULL DEFAULT 'pending', lawyer_note text NOT NULL DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(external_case_id, lawyer_id)
+)`;
+await lawyersDb`CREATE TABLE IF NOT EXISTS matter_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), inquiry_id uuid NOT NULL REFERENCES inquiries(id) ON DELETE CASCADE,
+  author_role text NOT NULL CHECK (author_role IN ('client','lawyer')), author_name text NOT NULL,
+  body text NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+)`;
+await lawyersDb`CREATE TABLE IF NOT EXISTS matter_files (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), inquiry_id uuid NOT NULL REFERENCES inquiries(id) ON DELETE CASCADE,
+  uploader_role text NOT NULL CHECK (uploader_role IN ('client','lawyer')), uploader_name text NOT NULL,
+  filename text NOT NULL, blob_url text NOT NULL, mime_type text NOT NULL, size_bytes integer NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+)`;
+await lawyersDb`ALTER TABLE matter_files ADD COLUMN IF NOT EXISTS source_document_id uuid UNIQUE`;
+await lawyersDb`CREATE TABLE IF NOT EXISTS matter_tasks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), inquiry_id uuid NOT NULL REFERENCES inquiries(id) ON DELETE CASCADE,
+  title text NOT NULL, assigned_to text NOT NULL CHECK (assigned_to IN ('client','lawyer')),
+  status text NOT NULL DEFAULT 'open' CHECK (status IN ('open','done')), due_date date,
+  created_by text NOT NULL CHECK (created_by IN ('client','lawyer')), created_at timestamptz NOT NULL DEFAULT now(),
+  completed_at timestamptz
+)`;
+await lawyersDb`CREATE TABLE IF NOT EXISTS matter_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), inquiry_id uuid NOT NULL REFERENCES inquiries(id) ON DELETE CASCADE,
+  actor_role text NOT NULL CHECK (actor_role IN ('client','lawyer','system')), actor_name text NOT NULL,
+  event_type text NOT NULL, description text NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+)`;
+await lawyersDb`CREATE INDEX IF NOT EXISTS matter_messages_inquiry_created_idx ON matter_messages (inquiry_id, created_at)`;
+await lawyersDb`CREATE INDEX IF NOT EXISTS matter_files_inquiry_created_idx ON matter_files (inquiry_id, created_at DESC)`;
+await lawyersDb`CREATE INDEX IF NOT EXISTS matter_tasks_inquiry_status_idx ON matter_tasks (inquiry_id, status, due_date)`;
+await lawyersDb`CREATE INDEX IF NOT EXISTS matter_events_inquiry_created_idx ON matter_events (inquiry_id, created_at DESC)`;
+await lawyersDb`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS payment_status text NOT NULL DEFAULT 'not_required'`;
+await lawyersDb`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS payment_amount_cents integer`;
+await lawyersDb`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS payment_currency text NOT NULL DEFAULT 'EUR'`;
+await lawyersDb`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS stripe_checkout_session_id text NOT NULL DEFAULT ''`;
 
 const profiles = [
   [

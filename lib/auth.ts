@@ -2,6 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
 const COOKIE_NAME = "meet_lawyer_session";
+const CLIENT_COOKIE_NAME = "meet_client_session";
 
 function secret() {
   const value = process.env.AUTH_SECRET;
@@ -40,4 +41,39 @@ export async function getAccountId() {
   } catch {
     return null;
   }
+}
+
+export async function createClientSession(accountId: string) {
+  const token = await new SignJWT({ role: "client" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(accountId)
+    .setIssuedAt()
+    .setExpirationTime("30d")
+    .sign(secret());
+  const store = await cookies();
+  store.set(CLIENT_COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
+}
+
+export async function getClientAccountId() {
+  const token = (await cookies()).get(CLIENT_COOKIE_NAME)?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, secret());
+    return payload.role === "client" && typeof payload.sub === "string"
+      ? payload.sub
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearClientSession() {
+  const store = await cookies();
+  store.delete(CLIENT_COOKIE_NAME);
 }

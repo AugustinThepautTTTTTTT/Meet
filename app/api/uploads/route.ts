@@ -34,7 +34,11 @@ export async function POST(request: Request) {
     const blob = await put(
       `lawyers/${accountId}/${purpose}-${crypto.randomUUID()}.${extension}`,
       file,
-      { access: "public", addRandomSuffix: false },
+      {
+        access: "public",
+        addRandomSuffix: false,
+        token: process.env.PROFILE_MEDIA_BLOB_TOKEN,
+      },
     );
     return NextResponse.json({ url: blob.url });
   } catch (error) {

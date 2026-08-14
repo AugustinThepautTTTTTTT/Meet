@@ -3,6 +3,9 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import type { CaseBrief } from "@/lib/case-brief";
+import type { IntakeExchange, IntakeState } from "@/lib/intake";
+import { useLocale } from "@/app/components/locale-provider";
 
 type Practice =
   | "Employment"
@@ -24,6 +27,9 @@ type Lawyer = {
   languages: string;
   match: number;
   price: string;
+  firstConsultationPriceCents?: number | null;
+  consultationCurrency?: string;
+  firstConsultationFree?: boolean;
   availability: string;
   accent: string;
   reasons: string[];
@@ -38,17 +44,80 @@ type Lawyer = {
   coverPhotoUrl?: string;
   tagline?: string;
 };
+type AiRanking = {
+  slug: string;
+  score: number;
+  reasons: string[];
+  jurisdictionNote: string;
+};
+type IntakeDocument = {
+  id: string;
+  token: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  analysis: {
+    documentType: string;
+    summary: string;
+    analysisMode?: "quick" | "deep";
+    disputeObject?: string;
+    claims?: string[];
+    procedure?: string;
+    detailedAnalysis?: string;
+    chronology?: string[];
+    legalIssues?: string[];
+    citedEvidence?: string[];
+    uncertainties?: string[];
+    relevantFacts: string[];
+    dates: string[];
+    parties: string[];
+    questionsRaised: string[];
+    extractionNotice: string;
+  };
+};
 
-const categories = [
-  "Not sure",
-  "Employment",
-  "Family",
-  "Housing",
-  "Business",
-  "Immigration",
-  "Criminal",
-  "Something else",
-];
+const preparationByPractice: Record<string, string[]> = {
+  Employment: [
+    "Employment agreement",
+    "Dismissal or warning letter",
+    "A list of important workplace dates",
+  ],
+  Family: [
+    "Relevant agreements or court orders",
+    "A list of important family dates",
+    "Financial information you may discuss",
+  ],
+  Housing: [
+    "Lease or tenancy agreement",
+    "Notices from the landlord or tenant",
+    "Photos and payment records",
+  ],
+  Business: [
+    "Relevant contract or term sheet",
+    "Company and counterparty names",
+    "A short timeline of negotiations",
+  ],
+  Immigration: [
+    "Passport and current permit",
+    "Letters from immigration authorities",
+    "Application and travel dates",
+  ],
+  Criminal: [
+    "Court or police documents",
+    "Hearing and interview dates",
+    "Do not upload sensitive evidence yet",
+  ],
+};
+
+function preparationItems(practice = "") {
+  return (
+    preparationByPractice[practice] || [
+      "Relevant contracts or official letters",
+      "A list of important dates",
+      "Names of the people and organisations involved",
+    ]
+  );
+}
 
 const lawyers: Lawyer[] = [
   {
@@ -370,18 +439,22 @@ const examples = [
   [
     "I lost my job",
     "I was dismissed from my job without warning and my employer has not paid my final salary.",
+    "J’ai été licencié sans préavis et mon employeur ne m’a pas versé mon dernier salaire.",
   ],
   [
     "My visa expires",
     "My work visa expires next month and I need help applying for residency.",
+    "Mon titre de séjour salarié expire le mois prochain et j’ai besoin d’aide pour son renouvellement.",
   ],
   [
     "I’m getting divorced",
     "My partner and I are separating and we need to agree on custody of our children.",
+    "Mon conjoint et moi nous séparons et devons organiser la résidence de nos enfants.",
   ],
   [
     "Landlord dispute",
     "My landlord is keeping my deposit and threatening eviction even though I paid rent.",
+    "Mon propriétaire conserve mon dépôt de garantie et menace de m’expulser alors que mes loyers sont payés.",
   ],
 ];
 
@@ -414,9 +487,44 @@ function detectPractice(text: string, selected: string): Practice {
       : "Business";
 }
 
+const locationJurisdictions: Record<string, string> = {
+  Paris: "France French Paris",
+  Lyon: "France French Lyon",
+  Marseille: "France French Marseille",
+  Brussels: "Belgium Belgian Brussels",
+  Berlin: "Germany German Berlin",
+  Madrid: "Spain Spanish Madrid",
+  London: "United Kingdom UK England English London",
+  Amsterdam: "Netherlands Dutch Amsterdam",
+  Stockholm: "Sweden Swedish Stockholm",
+};
+
+function jurisdictionFit(lawyer: Lawyer, jurisdiction = "") {
+  if (!jurisdiction || jurisdiction === "Not confirmed") return 0;
+  const requested = jurisdiction.toLowerCase();
+  const coverage =
+    `${lawyer.location} ${lawyer.credentials} ${locationJurisdictions[lawyer.location] || ""}`.toLowerCase();
+  const terms = requested.split(/[^a-z]+/).filter((term) => term.length > 3);
+  return terms.some((term) => coverage.includes(term)) ? 35 : 0;
+}
+
 export default function Home() {
+  const { locale } = useLocale();
+  const [clientStep, setClientStep] = useState<
+    "describe" | "conversation" | "matches" | "booked"
+  >("describe");
+  const [caseId, setCaseId] = useState("");
+  const [brief, setBrief] = useState<CaseBrief | null>(null);
+  const [exchanges, setExchanges] = useState<IntakeExchange[]>([]);
+  const [intake, setIntake] = useState<IntakeState | null>(null);
+  const [intakeDocuments, setIntakeDocuments] = useState<IntakeDocument[]>([]);
+  const [documentStatus, setDocumentStatus] = useState<"idle" | "uploading" | "error">("idle");
+  const [documentError, setDocumentError] = useState("");
+  const [entryMode, setEntryMode] = useState<"chat" | "document">("chat");
+  const [aiRankings, setAiRankings] = useState<AiRanking[]>([]);
+  const [aiMatchingComplete, setAiMatchingComplete] = useState(false);
   const [view, setView] = useState<"client" | "lawyer">("client");
-  const [category, setCategory] = useState("Not sure");
+  const category = "Not sure";
   const [problem, setProblem] = useState("");
   const [submittedProblem, setSubmittedProblem] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -430,10 +538,33 @@ export default function Home() {
   const [caseStatus, setCaseStatus] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
-  const [contact, setContact] = useState({ name: "", email: "", message: "" });
+  const [contact, setContact] = useState({
+    name: "",
+    email: "",
+    password: "",
+    message: "",
+  });
+  const [bookingAuthMode, setBookingAuthMode] = useState<"signup" | "signin">(
+    "signup",
+  );
+  const [selectedTime, setSelectedTime] = useState("");
+  const [selectedTimeStart, setSelectedTimeStart] = useState("");
+  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
+  const [availabilityDays, setAvailabilityDays] = useState<
+    Array<{
+      date: string;
+      weekday: string;
+      dayLabel: string;
+      slots: Array<{ start: string; label: string }>;
+    }>
+  >([]);
+  const [selectedAvailabilityDate, setSelectedAvailabilityDate] = useState("");
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityTimezone, setAvailabilityTimezone] = useState("");
   const [contactStatus, setContactStatus] = useState<
     "idle" | "sending" | "sent" | "error"
   >("idle");
+  const [contactError, setContactError] = useState("");
   const [publishStatus, setPublishStatus] = useState<
     "idle" | "publishing" | "error"
   >("idle");
@@ -448,58 +579,263 @@ export default function Home() {
   }, []);
 
   const detectedPractice = useMemo(
-    () => detectPractice(submittedProblem || problem, category),
-    [submittedProblem, problem, category],
-  );
-  const matches = useMemo(
     () =>
-      [...directoryLawyers]
-        .sort((a, b) => {
-          const aScore =
-            (a.practice === detectedPractice ? 100 : 0) +
-            a.keywords.filter((k) => submittedProblem.toLowerCase().includes(k))
-              .length *
-              5 +
-            a.match;
-          const bScore =
-            (b.practice === detectedPractice ? 100 : 0) +
-            b.keywords.filter((k) => submittedProblem.toLowerCase().includes(k))
-              .length *
-              5 +
-            b.match;
-          return bScore - aScore;
-        })
-        .slice(0, 3),
-    [submittedProblem, detectedPractice, directoryLawyers],
+      intake?.practice && intake.practice !== "Other"
+        ? (intake.practice as Practice)
+        : detectPractice(submittedProblem || problem, category),
+    [intake, submittedProblem, problem, category],
   );
+  const matches = useMemo(() => {
+    if (aiMatchingComplete) {
+      return aiRankings
+        .map((ranking) => {
+          const lawyer = directoryLawyers.find(
+            (candidate) => candidate.slug === ranking.slug,
+          );
+          return lawyer
+            ? {
+                ...lawyer,
+                match: ranking.score,
+                reasons: [
+                  ...ranking.reasons,
+                  ...(ranking.jurisdictionNote &&
+                  !/confirmed|eligible|admitted/i.test(ranking.jurisdictionNote)
+                    ? [ranking.jurisdictionNote]
+                    : []),
+                ].slice(0, 3),
+              }
+            : null;
+        })
+        .filter((lawyer): lawyer is Lawyer => Boolean(lawyer));
+    }
+    return [...directoryLawyers]
+      .sort((a, b) => {
+        const aScore =
+          (a.practice === detectedPractice ? 100 : 0) +
+          a.keywords.filter((k) => submittedProblem.toLowerCase().includes(k))
+            .length *
+            5 +
+          jurisdictionFit(a, intake?.jurisdiction) +
+          a.match;
+        const bScore =
+          (b.practice === detectedPractice ? 100 : 0) +
+          b.keywords.filter((k) => submittedProblem.toLowerCase().includes(k))
+            .length *
+            5 +
+          jurisdictionFit(b, intake?.jurisdiction) +
+          b.match;
+        return bScore - aScore;
+      })
+      .slice(0, 3);
+  }, [
+    submittedProblem,
+    detectedPractice,
+    directoryLawyers,
+    intake,
+    aiRankings,
+    aiMatchingComplete,
+  ]);
 
   async function findMatches(event: FormEvent) {
     event.preventDefault();
+    if (entryMode === "document" && intakeDocuments.length === 0) {
+      setDocumentError(locale === "fr" ? "Ajoutez un document pour commencer l’analyse approfondie." : "Add a document to begin the deep analysis.");
+      return;
+    }
     const description =
-      problem.trim() || "I need help understanding a business contract.";
+      problem.trim() ||
+      (intakeDocuments.length
+        ? locale === "fr" ? "Je souhaite comprendre précisément le dossier exposé dans le document joint et être orienté vers l’avocat adapté." : "I need help understanding the legal issue shown in the attached document."
+        : "I need help understanding a business contract.");
     setSubmittedProblem(description);
+    setExchanges([]);
+    setIntake(null);
+    setAiRankings([]);
+    setAiMatchingComplete(false);
+    setClientStep("conversation");
     setCaseStatus("saving");
-    setTimeout(
+    void continueIntake(description, []);
+    window.setTimeout(
       () =>
         document
-          .getElementById("matches")
+          .getElementById("guided-conversation")
           ?.scrollIntoView({ behavior: "smooth" }),
       50,
     );
+  }
+
+  async function continueIntake(
+    description: string,
+    nextExchanges: IntakeExchange[],
+    activeDocuments = intakeDocuments,
+  ) {
+    setCaseStatus("saving");
     try {
-      const response = await fetch("/api/cases", {
+      const response = await fetch("/api/intake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           problem: description,
-          category,
-          detectedPractice: detectPractice(description, category),
+          exchanges: nextExchanges,
+          locale,
+          documents: activeDocuments.map(({ id, token }) => ({ id, token })),
         }),
       });
-      setCaseStatus(response.ok ? "saved" : "error");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setIntake(data.intake);
+      if (data.intake.ready)
+        await finishConversation(data.intake, nextExchanges, activeDocuments);
+      else setCaseStatus("idle");
     } catch {
       setCaseStatus("error");
     }
+  }
+
+  async function finishConversation(
+    finalIntake: IntakeState,
+    completedExchanges: IntakeExchange[],
+    activeDocuments = intakeDocuments,
+  ) {
+    const description = submittedProblem || problem.trim();
+    setCaseStatus("saving");
+    try {
+      const completedBrief: CaseBrief = {
+        summary: finalIntake.summary || description,
+        dispute: finalIntake.dispute,
+        keyFacts: finalIntake.keyFacts,
+        conversation: [
+          { role: "client", content: description },
+          ...completedExchanges.flatMap((exchange) => [
+            { role: "assistant" as const, content: exchange.question },
+            { role: "client" as const, content: exchange.answer },
+          ]),
+        ],
+        practice: finalIntake.practice,
+        legalDomain: finalIntake.legalDomain,
+        courtOrProcedure: finalIntake.courtOrProcedure,
+        territorialBar: finalIntake.territorialBar,
+        applicableLaw: finalIntake.applicableLaw,
+        jurisdiction:
+          finalIntake.jurisdiction ||
+          finalIntake.incidentLocation ||
+          "Not confirmed",
+        urgency: finalIntake.urgency,
+        deadline: finalIntake.deadline || "No deadline confirmed",
+        desiredOutcome:
+          finalIntake.desiredOutcome || "Understand options and next steps",
+        parties: finalIntake.parties || "Not provided",
+        language: finalIntake.language || "English",
+        meetingFormat: finalIntake.meetingFormat || "Video call",
+        timeline: [
+          "Client described the situation through Meet",
+          `Intake completed in ${completedExchanges.length + 1} AI checks`,
+        ],
+        missingInformation: finalIntake.missingInformation,
+        documents: activeDocuments.map((document) => ({
+          id: document.id,
+          filename: document.filename,
+          documentType: document.analysis.documentType,
+          summary: document.analysis.summary,
+          relevantFacts: document.analysis.relevantFacts,
+          dates: document.analysis.dates,
+          parties: document.analysis.parties,
+          detailedAnalysis: document.analysis.detailedAnalysis,
+          chronology: document.analysis.chronology,
+          legalIssues: document.analysis.legalIssues,
+          claims: document.analysis.claims,
+          procedure: document.analysis.procedure,
+          uncertainties: document.analysis.uncertainties,
+        })),
+      };
+      const [response, matchResponse] = await Promise.all([
+        fetch("/api/cases", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            problem: description,
+            category,
+            detectedPractice: finalIntake.practice,
+            brief: completedBrief,
+            documentRefs: activeDocuments.map(({ id, token }) => ({ id, token })),
+          }),
+        }),
+        fetch("/api/matches", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ brief: completedBrief, locale }),
+        }),
+      ]);
+      const data = await response.json();
+      if (!response.ok) throw new Error();
+      if (matchResponse.ok) {
+        const matchData = await matchResponse.json();
+        setAiRankings(matchData.rankings || []);
+        setAiMatchingComplete(true);
+      }
+      setCaseId(data.case.id);
+      setBrief(completedBrief);
+      setClientStep("matches");
+      setCaseStatus("saved");
+      window.setTimeout(
+        () =>
+          document
+            .getElementById("matches")
+            ?.scrollIntoView({ behavior: "smooth" }),
+        50,
+      );
+    } catch {
+      setCaseStatus("error");
+    }
+  }
+
+  function answerChatQuestion(answer: string) {
+    const clean = answer.trim();
+    if (!clean || !intake?.nextQuestion) return;
+    const nextExchanges = [
+      ...exchanges,
+      { question: intake.assistantMessage || intake.nextQuestion, answer: clean },
+    ];
+    setExchanges(nextExchanges);
+    void continueIntake(submittedProblem, nextExchanges);
+  }
+  async function uploadIntakeDocument(file: File, analysisMode: "quick" | "deep" = entryMode === "document" ? "deep" : "quick") {
+    if (intakeDocuments.length >= 3) {
+      setDocumentError("You can attach up to three focused documents.");
+      setDocumentStatus("error");
+      return;
+    }
+    setDocumentStatus("uploading");
+    setDocumentError("");
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      form.set("locale", locale);
+      form.set("analysisMode", analysisMode);
+      const response = await fetch("/api/intake/documents", { method: "POST", body: form });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Document could not be read.");
+      const nextDocuments = [...intakeDocuments, result.document];
+      setIntakeDocuments(nextDocuments);
+      setDocumentStatus("idle");
+      if (clientStep === "conversation" && submittedProblem)
+        await continueIntake(submittedProblem, exchanges, nextDocuments);
+    } catch (error) {
+      setDocumentError(error instanceof Error ? error.message : "Document could not be read.");
+      setDocumentStatus("error");
+    }
+  }
+  async function removeIntakeDocument(document: IntakeDocument) {
+    const nextDocuments = intakeDocuments.filter((item) => item.id !== document.id);
+    setIntakeDocuments(nextDocuments);
+    setDocumentError("");
+    await fetch("/api/intake/documents", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: document.id, token: document.token }),
+    });
+    if (clientStep === "conversation")
+      await continueIntake(submittedProblem, exchanges, nextDocuments);
   }
   function showProfile(lawyer: Lawyer) {
     setActiveLawyer(lawyer);
@@ -512,26 +848,74 @@ export default function Home() {
     setActiveLawyer(lawyer);
     setContact((current) => ({ ...current, message: submittedProblem }));
     setContactStatus("idle");
+    setContactError("");
+    setSelectedTime(lawyer.availability);
+    setSelectedTimeStart("");
+    setAvailableTimes([lawyer.availability]);
+    setAvailabilityDays([]);
+    setSelectedAvailabilityDate("");
+    setAvailabilityLoading(true);
+    setAvailabilityTimezone("");
     setContactOpen(true);
+    if (lawyer.slug) {
+      fetch(`/api/lawyers/${lawyer.slug}/availability`)
+        .then((response) => (response.ok ? response.json() : Promise.reject()))
+        .then((data) => {
+          setAvailabilityDays(data.days || []);
+          const firstDay = data.days?.find(
+            (day: { slots?: unknown[] }) => day.slots?.length,
+          );
+          if (firstDay) {
+            setSelectedAvailabilityDate(firstDay.date);
+            setSelectedTime(
+              `${firstDay.weekday}, ${firstDay.dayLabel} · ${firstDay.slots[0].label}`,
+            );
+            setSelectedTimeStart(firstDay.slots[0].start);
+          } else if (data.slots?.length) {
+            setAvailableTimes(data.slots);
+            setSelectedTime(data.slots[0]);
+          }
+          setAvailabilityTimezone(data.timezone || "");
+        })
+        .catch(() => undefined)
+        .finally(() => setAvailabilityLoading(false));
+    }
+  }
+  function closeContact() {
+    setContactOpen(false);
+    setActiveLawyer(null);
   }
   async function sendContact() {
-    if (!activeLawyer) return;
+    if (!activeLawyer || !caseId || !activeLawyer.slug) return;
     setContactStatus("sending");
+    setContactError("");
     try {
-      const response = await fetch("/api/contacts", {
+      const response = await fetch(`/api/cases/${caseId}/book`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          lawyerName: activeLawyer.name,
+          lawyerSlug: activeLawyer.slug,
           clientName: contact.name,
-          email: contact.email,
-          message: contact.message,
+          clientEmail: contact.email,
+          clientPassword: contact.password,
+          bookingAuthMode,
+          meetingTime: selectedTime,
+          meetingStart: selectedTimeStart,
         }),
       });
-      if (!response.ok) throw new Error();
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      if (data.checkoutUrl) {
+        window.location.assign(data.checkoutUrl);
+        return;
+      }
       setSelected(activeLawyer.name);
       setContactStatus("sent");
-    } catch {
+      setClientStep("booked");
+    } catch (error) {
+      setContactError(
+        error instanceof Error ? error.message : "Complete all account fields.",
+      );
       setContactStatus("error");
     }
   }
@@ -562,6 +946,7 @@ export default function Home() {
             setActiveLawyer(null);
             setView("client");
             setLawyerStep("intro");
+            setClientStep("describe");
           }}
           aria-label="Meet home"
         >
@@ -588,12 +973,15 @@ export default function Home() {
             For lawyers
           </button>
         </nav>
-        <Link className="account-button" href="/lawyer/account">
-          Lawyer sign in
-        </Link>
+        <div className="account-links">
+          <Link href="/client/account">Client sign in</Link>
+          <Link className="account-button" href="/lawyer/account">
+            Lawyer sign in
+          </Link>
+        </div>
       </header>
 
-      {view === "client" && activeLawyer ? (
+      {view === "client" && activeLawyer && !contactOpen ? (
         <PublicProfile
           lawyer={activeLawyer}
           onBack={() => setActiveLawyer(null)}
@@ -602,68 +990,138 @@ export default function Home() {
       ) : view === "client" ? (
         <>
           <section className="hero" id="top">
-            <div className="eyebrow">
-              <span /> AI-guided legal matching
-            </div>
-            <h1>
-              Tell us what happened.
-              <br />
-              Meet the right lawyer.
-            </h1>
-            <p className="hero-copy">
-              Describe your situation in your own words. We’ll understand what
-              you need and introduce you to lawyers who fit.
-            </p>
-            <form className="intake-card" onSubmit={findMatches}>
-              <label htmlFor="problem">What do you need help with?</label>
-              <textarea
-                id="problem"
-                value={problem}
-                onChange={(e) => setProblem(e.target.value)}
-                placeholder="For example: I’ve been dismissed from my job and I’m not sure the process was fair..."
-                rows={5}
-              />
-              <div className="textarea-meta">
-                <span className="privacy-note">
-                  <span className="lock">⌁</span> Private & confidential
-                </span>
-                <span>
-                  {problem.length
-                    ? `${problem.length} characters`
-                    : "A few sentences is enough"}
-                </span>
+            <div className="hero-intro">
+              <div className="eyebrow">
+                <span /> AI-guided legal matching
               </div>
-              <div className="example-row">
-                <small>Try an example</small>
-                {examples.map(([label, value]) => (
-                  <button
-                    type="button"
-                    key={label}
-                    onClick={() => setProblem(value)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="category-row" aria-label="Legal category">
-                {categories.map((item) => (
-                  <button
-                    type="button"
-                    className={category === item ? "chip selected" : "chip"}
-                    key={item}
-                    onClick={() => setCategory(item)}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-              <button className="primary-button" type="submit">
-                Find my matches <span>→</span>
-              </button>
-              <p className="form-footnote">
-                Free to use · No commitment · Takes about 2 minutes
+              <h1>
+                Tell us what happened.
+                <br />
+                Meet the right lawyer.
+              </h1>
+              <p className="hero-copy">
+                Describe your situation in your own words. We’ll understand what
+                you need and introduce you to lawyers who fit.
               </p>
-            </form>
+              <div className="hero-confidence" aria-label="How Meet works">
+                <span><b>1</b> Explain your situation</span>
+                <span><b>2</b> Review your matches</span>
+                <span><b>3</b> Book securely</span>
+              </div>
+              <p className="hero-disclaimer">
+                Meet helps you find independent lawyers. It does not provide legal advice.
+              </p>
+            </div>
+            <div className="hero-workspace">
+              {clientStep === "describe" ? (
+              <form className="intake-card" onSubmit={findMatches}>
+                <div className="intake-entry-modes" role="tablist" aria-label={locale === "fr" ? "Choisir comment commencer" : "Choose how to begin"}>
+                  <button type="button" role="tab" aria-selected={entryMode === "chat"} className={entryMode === "chat" ? "active" : ""} onClick={() => { setEntryMode("chat"); setDocumentError(""); }}>
+                    <span>01</span><strong>{locale === "fr" ? "Décrire ma situation" : "Describe my situation"}</strong><small>{locale === "fr" ? "Une conversation simple, avec vos propres mots" : "A simple conversation in your own words"}</small>
+                  </button>
+                  <button type="button" role="tab" aria-selected={entryMode === "document"} className={entryMode === "document" ? "active" : ""} onClick={() => { setEntryMode("document"); setProblem(""); setDocumentError(""); }}>
+                    <span>02</span><strong>{locale === "fr" ? "Commencer par un document" : "Start from a document"}</strong><small>{locale === "fr" ? "Une étude approfondie avant la conversation" : "A deep study before the conversation"}</small>
+                  </button>
+                </div>
+                {entryMode === "chat" ? <>
+                  <label htmlFor="problem">What do you need help with?</label>
+                  <textarea
+                    id="problem"
+                    value={problem}
+                    onChange={(e) => setProblem(e.target.value)}
+                    placeholder={locale === "fr" ? "Par exemple : j’ai été licencié et je ne sais pas si la procédure a été respectée…" : "For example: I’ve been dismissed from my job and I’m not sure the process was fair..."}
+                    rows={5}
+                  />
+                  <div className="textarea-meta">
+                    <span className="privacy-note"><span className="lock">⌁</span> Private & confidential</span>
+                    <span>{problem.length ? `${problem.length} characters` : "A few sentences is enough"}</span>
+                  </div>
+                </> : <div className="document-first-intro">
+                  <span>DOC</span>
+                  <div><strong>{locale === "fr" ? "Déposez le document qui décrit votre dossier" : "Upload the document describing your matter"}</strong><p>{locale === "fr" ? "Meet étudiera les parties, les faits, les demandes, la procédure, la chronologie et les questions juridiques apparentes. Cette analyse peut prendre quelques minutes." : "Meet will study the parties, facts, claims, procedure, chronology and apparent legal issues. This may take a few minutes."}</p></div>
+                </div>}
+                <div className="intake-document-upload">
+                  <div className="intake-document-upload-heading">
+                    <div>
+                      <strong>{entryMode === "document" ? (locale === "fr" ? "Document principal" : "Main document") : "Have a relevant document?"}</strong>
+                      <span>{entryMode === "document" ? (locale === "fr" ? "Analyse approfondie de l’intégralité du texte utile" : "Deep analysis of the complete useful text") : "Attach it now and Meet will use it to understand your situation."}</span>
+                    </div>
+                    <label className={documentStatus === "uploading" || intakeDocuments.length >= 3 ? "disabled" : ""}>
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                        disabled={documentStatus === "uploading" || intakeDocuments.length >= 3}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) void uploadIntakeDocument(file, entryMode === "document" ? "deep" : "quick");
+                          event.target.value = "";
+                        }}
+                      />
+                      <span>＋</span>{documentStatus === "uploading" ? (entryMode === "document" && locale === "fr" ? "Étude approfondie en cours…" : "Reading document…") : (entryMode === "document" && locale === "fr" ? "Choisir le document" : "Attach a document")}
+                    </label>
+                  </div>
+                  {intakeDocuments.length ? (
+                    <div className="intake-document-list">
+                      {intakeDocuments.map((document) => (
+                        <article key={document.id}>
+                          <span>{document.filename.split(".").pop()?.toUpperCase()}</span>
+                          <div><strong>{document.filename}</strong><small>{document.analysis.analysisMode === "deep" && locale === "fr" ? "Étude approfondie terminée — prête pour la conversation" : document.analysis.summary}</small></div>
+                          <button type="button" onClick={() => void removeIntakeDocument(document)} aria-label={`Remove ${document.filename}`}>×</button>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
+                  {documentError ? <p role="alert">{documentError}</p> : null}
+                  <small>Optional · Up to 3 PDF, DOCX or TXT files · 8 MB each · Originals stay private</small>
+                </div>
+                {entryMode === "chat" ? <div className="example-row">
+                  <small>Try an example</small>
+                  {examples.map(([label, value, frenchValue]) => (
+                    <button
+                      type="button"
+                      key={label}
+                      onClick={() => setProblem(locale === "fr" ? frenchValue : value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div> : null}
+                <button className="primary-button" type="submit" disabled={documentStatus === "uploading"}>
+                  {documentStatus === "uploading" ? (locale === "fr" ? "Analyse approfondie en cours…" : "Analysing your document…") : entryMode === "document" ? (locale === "fr" ? "Continuer avec l’étude du dossier" : "Continue with the document study") : "Start conversation"} <span>→</span>
+                </button>
+                <p className="form-footnote">
+                  {entryMode === "document" && locale === "fr" ? "Analyse privée · Le document original sera transmis uniquement à l’avocat choisi" : "Free to use · No commitment · Takes about 2 minutes"}
+                </p>
+              </form>
+              ) : (
+              <div className="client-progress">
+                <span className="done">1</span>
+                <i />
+                <span
+                  className={clientStep === "conversation" ? "active" : "done"}
+                >
+                  2
+                </span>
+                <i />
+                <span
+                  className={
+                    clientStep === "matches" || clientStep === "booked"
+                      ? "active"
+                      : ""
+                  }
+                >
+                  3
+                </span>
+                <small>
+                  {clientStep === "conversation"
+                    ? "Meet is understanding your situation"
+                    : clientStep === "matches"
+                      ? "Choose your lawyer"
+                      : "Meeting requested"}
+                </small>
+              </div>
+              )}
+            </div>
           </section>
           <section className="trust-strip">
             <div>
@@ -679,97 +1137,106 @@ export default function Home() {
               <span>You choose who to contact</span>
             </div>
           </section>
-          {submittedProblem && (
-            <section className="matches-section" id="matches">
-              <div className="section-heading">
-                <div>
-                  <p className="section-kicker">
-                    Your shortlist · {detectedPractice} law
-                  </p>
-                  <h2>Three lawyers fit your situation</h2>
-                  <p className="match-explainer">
-                    Meet identified the legal area and ranked relevant
-                    experience, approach and availability.{" "}
-                    {caseStatus === "saved"
-                      ? "Your request has been saved securely."
-                      : caseStatus === "saving"
-                        ? "Saving your request…"
-                        : ""}
-                  </p>
-                </div>
-                <div className="case-summary">
-                  <span>{detectedPractice}</span>
-                  <p>“{submittedProblem}”</p>
-                </div>
-              </div>
-              <div className="lawyer-grid">
-                {matches.map((lawyer, index) => (
-                  <article className="lawyer-card" key={lawyer.name}>
-                    <div className="card-topline">
-                      {lawyer.profilePhotoUrl ? (
-                        <Image
-                          className="avatar lawyer-photo"
-                          src={lawyer.profilePhotoUrl}
-                          alt={lawyer.name}
-                          width={48}
-                          height={48}
-                          unoptimized
-                        />
-                      ) : (
-                        <div className={`avatar ${lawyer.accent}`}>
-                          {lawyer.initials}
+          {clientStep === "conversation" ? (
+            <ChatIntake
+              problem={submittedProblem}
+              practice={detectedPractice}
+              intake={intake}
+              exchanges={exchanges}
+              documents={intakeDocuments}
+              documentStatus={documentStatus}
+              documentError={documentError}
+              onAnswer={answerChatQuestion}
+              onUpload={uploadIntakeDocument}
+              onRemoveDocument={removeIntakeDocument}
+              onRestart={() => setClientStep("describe")}
+              finishing={caseStatus === "saving"}
+              error={caseStatus === "error"}
+            />
+          ) : null}
+          {(clientStep === "matches" || clientStep === "booked") &&
+            submittedProblem && (
+              <>
+                <section className="matches-section" id="matches">
+                  <div className="section-heading">
+                    <div>
+                      <p className="section-kicker">
+                        {locale === "fr" ? "Votre sélection" : "Your shortlist"} · {locale === "fr" ? ({ Employment: "droit du travail", Family: "droit de la famille", Housing: "droit immobilier", Business: "droit des affaires", Immigration: "droit des étrangers", Criminal: "droit pénal", Injury: "préjudice corporel", Estates: "successions", Technology: "numérique et données" } as Record<string, string>)[detectedPractice] : `${detectedPractice} law`}
+                      </p>
+                      <h2>
+                        {matches.length === 0
+                          ? "No sufficiently qualified match yet"
+                          : matches.length === 1
+                            ? "One lawyer strongly fits your situation"
+                            : `${matches.length} lawyers fit your situation`}
+                      </h2>
+                      <p className="match-explainer">
+                        {locale === "fr"
+                          ? "Meet a comparé votre synthèse aux profils publiés en tenant compte de l’expertise, de la juridiction, de la langue et des disponibilités. "
+                          : "Meet compared your brief with published lawyer profiles, including expertise, jurisdiction, language and availability. "}
+                        {caseStatus === "saved"
+                          ? locale === "fr" ? "Votre demande a été enregistrée de manière sécurisée." : "Your request has been saved securely."
+                          : caseStatus === "saving"
+                            ? locale === "fr" ? "Enregistrement de votre demande…" : "Saving your request…"
+                            : ""}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="results-content">
+                  <div className="lawyer-grid">
+                    {matches.map((lawyer, index) => (
+                      <article className="lawyer-card" key={lawyer.name}>
+                        <div className="card-topline">
+                          {lawyer.profilePhotoUrl ? (
+                            <Image className="avatar lawyer-photo" src={lawyer.profilePhotoUrl} alt={lawyer.name} width={48} height={48} unoptimized />
+                          ) : <div className={`avatar ${lawyer.accent}`}>{lawyer.initials}</div>}
+                          <span className="match-score">{aiMatchingComplete ? lawyer.match : Math.max(86, lawyer.match - index)}% match</span>
                         </div>
-                      )}
-                      <span className="match-score">
-                        {Math.max(86, lawyer.match - index)}% match
-                      </span>
-                    </div>
-                    <h3>{lawyer.name}</h3>
-                    <p className="specialty">{lawyer.specialty}</p>
-                    <p className="location">
-                      {lawyer.location} · {lawyer.languages}
-                    </p>
-                    <ul>
-                      {lawyer.reasons.map((reason) => (
-                        <li key={reason}>{reason}</li>
-                      ))}
-                    </ul>
-                    <div className="card-details">
-                      <span>{lawyer.price}</span>
-                      <strong>{lawyer.availability}</strong>
-                    </div>
-                    <div className="card-actions">
-                      {lawyer.slug ? (
-                        <Link
-                          className="card-button profile-card-link"
-                          href={`/lawyers/${lawyer.slug}`}
-                        >
-                          View profile
-                        </Link>
-                      ) : (
-                        <button
-                          className="card-button"
-                          onClick={() => showProfile(lawyer)}
-                        >
-                          View profile
-                        </button>
-                      )}
-                      <button
-                        className={
-                          selected === lawyer.name
-                            ? "contact-card chosen"
-                            : "contact-card"
-                        }
-                        onClick={() => openContact(lawyer)}
-                      >
-                        {selected === lawyer.name ? "Requested ✓" : "Contact"}
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-          )}
+                        <h3>{lawyer.name}</h3>
+                        <p className="specialty">{lawyer.specialty}</p>
+                        <p className="location">{lawyer.location} · {lawyer.languages}</p>
+                        <ul>{lawyer.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+                        <div className="card-details"><span>{lawyer.price}</span><strong>{lawyer.availability}</strong></div>
+                        <div className="card-actions">
+                          <button className="card-button" onClick={() => showProfile(lawyer)}>View profile</button>
+                          <button className={selected === lawyer.name ? "contact-card chosen" : "contact-card"} onClick={() => openContact(lawyer)}>{selected === lawyer.name ? "Meeting requested ✓" : "Choose a time"}</button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                    <aside className="live-case-summary result-case-summary">
+                      <header>
+                        <span>Your case summary</span>
+                        <i className="active" />
+                      </header>
+                      <h2>{brief?.dispute || "Your legal matter"}</h2>
+                      <p className="live-summary-copy">{brief?.summary || submittedProblem}</p>
+                      {brief?.keyFacts?.length ? (
+                        <section>
+                          <h3>What we understand</h3>
+                          <ul>{brief.keyFacts.slice(0, 5).map((fact) => <li key={fact}>{fact}</li>)}</ul>
+                        </section>
+                      ) : null}
+                      <div className="live-summary-meta">
+                        <div><small>Legal area</small><strong>{brief?.legalDomain || brief?.practice || detectedPractice}</strong></div>
+                        <div><small>Jurisdiction</small><strong>{brief?.jurisdiction || "Not confirmed"}</strong></div>
+                        <div><small>Timing</small><strong>{brief?.deadline || brief?.urgency || "Being assessed"}</strong></div>
+                        <div><small>Desired outcome</small><strong>{brief?.desiredOutcome || "Understand options and next steps"}</strong></div>
+                        {brief?.courtOrProcedure ? <div><small>Jurisdiction or procedure</small><strong>{brief.courtOrProcedure}</strong></div> : null}
+                        {brief?.territorialBar ? <div><small>Relevant bar</small><strong>{brief.territorialBar}</strong></div> : null}
+                      </div>
+                      {brief?.missingInformation?.length ? (
+                        <section className="open-points">
+                          <h3>Still useful to clarify</h3>
+                          <ul>{brief.missingInformation.slice(0, 3).map((item) => <li key={item}>{item}</li>)}</ul>
+                        </section>
+                      ) : null}
+                      <footer>This brief will be shared only with the lawyer you contact.</footer>
+                    </aside>
+                  </div>
+                </section>
+              </>
+            )}
         </>
       ) : (
         <LawyerStudio
@@ -792,7 +1259,7 @@ export default function Home() {
           >
             <button
               className="modal-close"
-              onClick={() => setContactOpen(false)}
+              onClick={closeContact}
               aria-label="Close"
             >
               ×
@@ -801,33 +1268,148 @@ export default function Home() {
             <p className="section-kicker">Contact {activeLawyer.name}</p>
             {contactStatus === "sent" ? (
               <>
-                <h2 id="contact-title">Request sent.</h2>
+                <h2 id="contact-title">Your meeting is requested.</h2>
                 <p>
-                  {activeLawyer.name.split(" ")[0]} has received your enquiry.
-                  You’ll hear back at {contact.email}.
+                  {activeLawyer.name.split(" ")[0]} received your structured
+                  brief and proposed time: <strong>{selectedTime}</strong>.
+                  We’ll send the confirmation to {contact.email}.
                 </p>
-                <button
-                  className="primary-button"
-                  onClick={() => setContactOpen(false)}
-                >
+                <div className="booking-next-steps">
+                  <span>✓ Case brief delivered</span>
+                  <span>✓ Time held pending lawyer acceptance</span>
+                  <strong>Prepare while we confirm</strong>
+                  {preparationItems(brief?.practice).map((item) => (
+                    <span key={item}>○ {item}</span>
+                  ))}
+                </div>
+                <button className="primary-button" onClick={closeContact}>
                   Done <span>→</span>
                 </button>
               </>
             ) : (
               <>
-                <h2 id="contact-title">Request a consultation</h2>
+                <h2 id="contact-title">Choose your consultation</h2>
                 <p>
-                  Share your details and {activeLawyer.name.split(" ")[0]} will
-                  respond within one business day.
+                  Meet will send {activeLawyer.name.split(" ")[0]} your case
+                  brief. Your details stay private until you request the
+                  meeting.
                 </p>
-                <input
-                  aria-label="Your name"
-                  placeholder="Your name"
-                  value={contact.name}
-                  onChange={(e) =>
-                    setContact({ ...contact, name: e.target.value })
-                  }
-                />
+                <div className="booking-brief-mini">
+                  <span>{brief?.practice}</span>
+                  <p>{brief?.summary}</p>
+                </div>
+                <div className="booking-price-summary">
+                  <span>First consultation</span>
+                  <strong>{activeLawyer.price}</strong>
+                  <small>
+                    {activeLawyer.firstConsultationFree
+                      ? "No payment is required for this consultation."
+                      : "Secure test payment through Stripe. No real money is charged in sandbox mode."}
+                  </small>
+                </div>
+                <div className="booking-calendar-heading">
+                  <p className="booking-label">Preferred time</p>
+                </div>
+                {availabilityLoading ? (
+                  <div className="availability-loading">
+                    Checking the lawyer’s live calendar…
+                  </div>
+                ) : availabilityDays.some((day) => day.slots.length) ? (
+                  <div className="day-dropdown-picker">
+                    <label>
+                      Choose a day
+                      <select
+                        value={selectedAvailabilityDate}
+                        onChange={(event) => {
+                          const date = event.target.value;
+                          setSelectedAvailabilityDate(date);
+                          const day = availabilityDays.find(
+                            (item) => item.date === date,
+                          );
+                          if (day?.slots[0]) {
+                            setSelectedTime(
+                              `${day.weekday}, ${day.dayLabel} · ${day.slots[0].label}`,
+                            );
+                            setSelectedTimeStart(day.slots[0].start);
+                          }
+                        }}
+                      >
+                        {availabilityDays
+                          .filter((day) => day.slots.length)
+                          .map((day) => (
+                            <option key={day.date} value={day.date}>
+                              {day.weekday} · {day.dayLabel}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <div className="selected-day-times">
+                      {availabilityDays
+                        .find((day) => day.date === selectedAvailabilityDate)
+                        ?.slots.map((slot) => {
+                          const day = availabilityDays.find(
+                            (item) => item.date === selectedAvailabilityDate,
+                          )!;
+                          const value = `${day.weekday}, ${day.dayLabel} · ${slot.label}`;
+                          return (
+                            <button
+                              key={slot.start}
+                              className={
+                                selectedTime === value ? "selected" : ""
+                              }
+                              onClick={() => {
+                                setSelectedTime(value);
+                                setSelectedTimeStart(slot.start);
+                              }}
+                            >
+                              {slot.label}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="meeting-times">
+                    {availableTimes.map((time) => (
+                      <button
+                        key={time}
+                        className={selectedTime === time ? "selected" : ""}
+                        onClick={() => setSelectedTime(time)}
+                      >
+                        {time}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {availabilityTimezone ? (
+                  <small className="availability-timezone">
+                    Times shown in {availabilityTimezone}
+                  </small>
+                ) : null}
+                <div className="booking-auth-toggle">
+                  <button
+                    className={bookingAuthMode === "signup" ? "active" : ""}
+                    onClick={() => setBookingAuthMode("signup")}
+                  >
+                    Create account
+                  </button>
+                  <button
+                    className={bookingAuthMode === "signin" ? "active" : ""}
+                    onClick={() => setBookingAuthMode("signin")}
+                  >
+                    I already have an account
+                  </button>
+                </div>
+                {bookingAuthMode === "signup" ? (
+                  <input
+                    aria-label="Your name"
+                    placeholder="Your name"
+                    value={contact.name}
+                    onChange={(e) =>
+                      setContact({ ...contact, name: e.target.value })
+                    }
+                  />
+                ) : null}
                 <input
                   aria-label="Email address"
                   placeholder="Email address"
@@ -837,17 +1419,40 @@ export default function Home() {
                     setContact({ ...contact, email: e.target.value })
                   }
                 />
-                <textarea
-                  aria-label="Message"
-                  value={contact.message}
-                  onChange={(e) =>
-                    setContact({ ...contact, message: e.target.value })
+                <div className="account-at-booking">
+                  <strong>
+                    {bookingAuthMode === "signup"
+                      ? "Your private client account"
+                      : "Sign in to your client account"}
+                  </strong>
+                  <span>
+                    {bookingAuthMode === "signup"
+                      ? "Created only when you send this request, so you can follow the meeting and brief."
+                      : "This new request will be added to your existing account."}
+                  </span>
+                </div>
+                <input
+                  aria-label={
+                    bookingAuthMode === "signup"
+                      ? "Create a password"
+                      : "Password"
                   }
-                  rows={4}
+                  placeholder={
+                    bookingAuthMode === "signup"
+                      ? "Create a password · 8 characters minimum"
+                      : "Your password"
+                  }
+                  type="password"
+                  autoComplete="new-password"
+                  value={contact.password}
+                  onChange={(e) =>
+                    setContact({ ...contact, password: e.target.value })
+                  }
                 />
                 {contactStatus === "error" && (
                   <p className="form-error">
-                    Complete all fields with a valid email.
+                    {contactError ||
+                      "Complete all fields with a valid email and password."}
                   </p>
                 )}
                 <button
@@ -855,7 +1460,13 @@ export default function Home() {
                   onClick={sendContact}
                   disabled={contactStatus === "sending"}
                 >
-                  {contactStatus === "sending" ? "Sending…" : "Send request"}{" "}
+                  {contactStatus === "sending"
+                    ? activeLawyer.firstConsultationFree
+                      ? "Requesting meeting…"
+                      : "Opening secure payment…"
+                    : activeLawyer.firstConsultationFree
+                      ? "Request this meeting"
+                      : "Continue to secure payment"}{" "}
                   <span>→</span>
                 </button>
               </>
@@ -876,6 +1487,213 @@ export default function Home() {
         </div>
       </footer>
     </main>
+  );
+}
+
+function ChatIntake({
+  problem,
+  practice,
+  intake,
+  exchanges,
+  documents,
+  documentStatus,
+  documentError,
+  onAnswer,
+  onUpload,
+  onRemoveDocument,
+  onRestart,
+  finishing,
+  error,
+}: {
+  problem: string;
+  practice: Practice;
+  intake: IntakeState | null;
+  exchanges: IntakeExchange[];
+  documents: IntakeDocument[];
+  documentStatus: "idle" | "uploading" | "error";
+  documentError: string;
+  onAnswer: (answer: string) => void;
+  onUpload: (file: File) => void;
+  onRemoveDocument: (document: IntakeDocument) => void;
+  onRestart: () => void;
+  finishing: boolean;
+  error: boolean;
+}) {
+  const { locale } = useLocale();
+  const readableDocuments = documents.filter((document) =>
+    document.analysis.relevantFacts.length > 0,
+  );
+  const [answer, setAnswer] = useState("");
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!answer.trim()) return;
+    onAnswer(answer);
+    setAnswer("");
+  }
+  return (
+    <section className="guided-chat-section" id="guided-conversation">
+      <div className="chat-workspace">
+      <div className="chat-shell">
+        <header>
+          <div className="meet-chat-avatar">M</div>
+          <div>
+            <strong>Meet assistant</strong>
+            <span>
+              <i /> Understanding your {practice.toLowerCase()} matter
+            </span>
+          </div>
+          <small>Private, document-aware conversation</small>
+        </header>
+        <div className="chat-transcript" aria-live="polite">
+          <div className="chat-row user">
+            <p>{problem}</p>
+          </div>
+          {documents.length ? (
+            <div className="chat-documents initial-documents">
+              <div className="chat-row meet document-note">
+                <span>M</span>
+                <p>{readableDocuments.length
+                  ? locale === "fr"
+                    ? `${documents.some((document) => document.analysis.analysisMode === "deep") ? "J’ai terminé l’étude approfondie" : "J’ai extrait les éléments utiles"} ${documents.length === 1 ? "du document" : "des documents"}. Je m’appuierai sur cette analyse et ne vous interrogerai que sur ce qui n’y figure réellement pas.`
+                    : `I’ve read the useful facts from ${documents.length === 1 ? "this document" : "these documents"}. I’ll only ask about missing or ambiguous details, and share the originals with your lawyer.`
+                  : locale === "fr" ? "Je n’ai pas pu extraire de texte fiable de ce document. L’original sera néanmoins transmis à votre avocat." : "I could not read text from this document, so I’ll ask you for the essential facts. The original will still be shared with your lawyer."}</p>
+              </div>
+              {documents.map((document) => (
+                <article key={document.id}>
+                  <div><span>{document.filename.split(".").pop()?.toUpperCase()}</span><strong>{document.filename}</strong></div>
+                  <p>{document.analysis.summary}</p>
+                  {document.analysis.detailedAnalysis ? <details className="document-deep-study">
+                    <summary>Voir l’étude détaillée du document</summary>
+                    <div>
+                      <p>{document.analysis.detailedAnalysis}</p>
+                      {document.analysis.chronology?.length ? <section><strong>Chronologie</strong><ul>{document.analysis.chronology.map((item) => <li key={item}>{item}</li>)}</ul></section> : null}
+                      {document.analysis.legalIssues?.length ? <section><strong>Questions juridiques apparentes</strong><ul>{document.analysis.legalIssues.map((item) => <li key={item}>{item}</li>)}</ul></section> : null}
+                      {document.analysis.uncertainties?.length ? <section><strong>Points réellement non établis</strong><ul>{document.analysis.uncertainties.map((item) => <li key={item}>{item}</li>)}</ul></section> : null}
+                    </div>
+                  </details> : null}
+                  <button type="button" onClick={() => onRemoveDocument(document)} aria-label={`Remove ${document.filename}`}>Remove</button>
+                </article>
+              ))}
+            </div>
+          ) : null}
+          {exchanges.map((exchange, index) => (
+            <div
+              className="chat-exchange"
+              key={`${exchange.question}-${index}`}
+            >
+              <div className="chat-row meet">
+                <span>M</span>
+                <p>{exchange.question}</p>
+              </div>
+              <div className="chat-row user">
+                <p>{exchange.answer}</p>
+              </div>
+            </div>
+          ))}
+          <div className="chat-row meet current">
+            <span>M</span>
+            <div>
+              <p className="chat-assistant-message">
+                {finishing
+                  ? "I’m checking the essential facts and preparing your shortlist."
+                  : intake?.assistantMessage ||
+                    "I’m reading what you shared and identifying what matters for the right introduction."}
+              </p>
+            </div>
+          </div>
+        </div>
+        {!finishing ? (
+          <div className="chat-composer">
+            <div className="chat-attachment-row">
+              <label className={documentStatus === "uploading" || documents.length >= 3 ? "disabled" : ""}>
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                  disabled={documentStatus === "uploading" || documents.length >= 3}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) onUpload(file);
+                    event.target.value = "";
+                  }}
+                />
+                <span>＋</span> {documentStatus === "uploading" ? "Reading document…" : "Add a document"}
+              </label>
+              <small>{documents.length}/3 · PDF, DOCX or TXT · 8 MB max</small>
+            </div>
+            {documentError ? <p className="chat-document-error" role="alert">{documentError}</p> : null}
+            {intake?.options?.length ? (
+              <div className="chat-options">
+                {intake.options.map((option) => (
+                  <button key={option} onClick={() => onAnswer(option)}>
+                    {option}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <form onSubmit={submit}>
+                <input
+                  aria-label="Your answer"
+                  value={answer}
+                  onChange={(event) => setAnswer(event.target.value)}
+                  placeholder="Type your answer…"
+                />
+                <button type="submit" aria-label="Send answer">
+                  ↑
+                </button>
+              </form>
+            )}
+            <p className="chat-ai-file-note">Meet extracts relevant facts with AI. The original stays private and is shared only with the lawyer you contact.</p>
+            <button className="chat-restart" onClick={onRestart}>
+              ← Change my first message
+            </button>
+          </div>
+        ) : (
+          <div className="chat-thinking">
+            <i />
+            <i />
+            <i />
+            <span>Preparing your brief and shortlist…</span>
+          </div>
+        )}
+        {error ? (
+          <div className="chat-error">
+            Meet couldn’t prepare the shortlist. Your answers are still here.
+          </div>
+        ) : null}
+      </div>
+      <aside className="live-case-summary" aria-live="polite">
+        <header>
+          <span>Live case summary</span>
+          <i className={intake ? "active" : ""} />
+        </header>
+        <h2>{intake?.dispute || "Understanding your situation"}</h2>
+        <p className="live-summary-copy">
+          {intake?.summary || "As you talk, Meet will organise the important facts here without interrupting the conversation."}
+        </p>
+        {intake?.keyFacts?.length ? (
+          <section>
+            <h3>What we understand</h3>
+            <ul>{intake.keyFacts.slice(0, 5).map((fact) => <li key={fact}>{fact}</li>)}</ul>
+          </section>
+        ) : null}
+        <div className="live-summary-meta">
+          <div><small>Legal area</small><strong>{intake?.legalDomain || (intake?.practice === "Other" ? "Being identified" : intake?.practice) || "Being identified"}</strong></div>
+          <div><small>Jurisdiction</small><strong>{intake?.jurisdiction && intake.jurisdiction !== "Not confirmed" ? intake.jurisdiction : "Not clear yet"}</strong></div>
+          <div><small>Timing</small><strong>{intake?.deadline && !/no deadline/i.test(intake.deadline) ? intake.deadline : "Being assessed"}</strong></div>
+          <div><small>Desired outcome</small><strong>{intake?.desiredOutcome || "Not clear yet"}</strong></div>
+          {intake?.courtOrProcedure && !/à déterminer|not confirmed/i.test(intake.courtOrProcedure) ? <div><small>Jurisdiction or procedure</small><strong>{intake.courtOrProcedure}</strong></div> : null}
+          {intake?.territorialBar && !/à confirmer|not confirmed/i.test(intake.territorialBar) ? <div><small>Relevant bar</small><strong>{intake.territorialBar}</strong></div> : null}
+        </div>
+        {intake?.missingInformation?.length ? (
+          <section className="open-points">
+            <h3>Still useful to clarify</h3>
+            <ul>{intake.missingInformation.slice(0, 3).map((item) => <li key={item}>{item}</li>)}</ul>
+          </section>
+        ) : null}
+        <footer>This summary is prepared for matching, not legal advice.</footer>
+      </aside>
+      </div>
+    </section>
   );
 }
 

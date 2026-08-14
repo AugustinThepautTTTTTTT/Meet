@@ -11,12 +11,16 @@ import ArticleStudio, {
 import MediaUpload from "./media-upload";
 
 type Profile = {
+  slug?: string;
   name: string;
   specialty: string;
   practice: string;
   location: string;
   languages: string;
   price: string;
+  first_consultation_price_cents: number | null;
+  consultation_currency: string;
+  first_consultation_free: boolean;
   availability: string;
   accent: string;
   reasons: string[];
@@ -26,8 +30,8 @@ type Profile = {
   tags: string[];
   profile_photo_url: string;
   cover_photo_url: string;
-  photo_settings: { position: number; zoom: number };
-  cover_settings: { position: number; zoom: number };
+  photo_settings: { x?: number; y?: number; position?: number; zoom: number };
+  cover_settings: { x?: number; y?: number; position?: number; zoom: number };
   tagline: string;
   firm_name: string;
   website: string;
@@ -38,6 +42,63 @@ type Profile = {
   consultation_format: string;
   published: boolean;
 };
+type Inquiry = {
+  id: string;
+  client_name: string;
+  client_email: string;
+  meeting_time: string;
+  meeting_start?: string;
+  meeting_uid?: string;
+  invite_sent_at?: string;
+  status: "pending" | "accepted" | "declined" | "clarification_requested";
+  lawyer_note: string;
+  created_at: string;
+  brief: {
+    summary: string;
+    dispute?: string;
+    keyFacts?: string[];
+    conversation?: Array<{
+      role: "client" | "assistant";
+      content: string;
+    }>;
+    practice: string;
+    jurisdiction: string;
+    urgency: string;
+    deadline: string;
+    desiredOutcome: string;
+    language: string;
+    meetingFormat: string;
+    parties: string;
+    timeline?: string[];
+    missingInformation?: string[];
+  };
+};
+type CalendarSettings = {
+  provider: string;
+  ical_url: string;
+  timezone: string;
+  duration_minutes: number;
+  buffer_minutes: number;
+  booking_days_ahead: number;
+  weekly_hours: Record<string, [string, string]>;
+  enabled: boolean;
+};
+const defaultCalendar: CalendarSettings = {
+  provider: "google",
+  ical_url: "",
+  timezone: "Europe/Paris",
+  duration_minutes: 30,
+  buffer_minutes: 15,
+  booking_days_ahead: 21,
+  weekly_hours: {
+    monday: ["09:00", "17:00"],
+    tuesday: ["09:00", "17:00"],
+    wednesday: ["09:00", "17:00"],
+    thursday: ["09:00", "17:00"],
+    friday: ["09:00", "17:00"],
+  },
+  enabled: false,
+};
 const blankProfile: Profile = {
   name: "",
   specialty: "",
@@ -45,6 +106,9 @@ const blankProfile: Profile = {
   location: "Remote",
   languages: "English",
   price: "Contact for pricing",
+  first_consultation_price_cents: null,
+  consultation_currency: "EUR",
+  first_consultation_free: false,
   availability: "Within one business day",
   accent: "blue",
   reasons: [],
@@ -54,8 +118,8 @@ const blankProfile: Profile = {
   tags: [],
   profile_photo_url: "",
   cover_photo_url: "",
-  photo_settings: { position: 50, zoom: 100 },
-  cover_settings: { position: 50, zoom: 100 },
+  photo_settings: { x: 50, y: 50, zoom: 100 },
+  cover_settings: { x: 50, y: 50, zoom: 100 },
   tagline: "",
   firm_name: "",
   website: "",
@@ -67,16 +131,40 @@ const blankProfile: Profile = {
   published: false,
 };
 
+function formatConsultationPrice(profile: Profile) {
+  if (profile.first_consultation_free) return "First consultation free";
+  if (profile.first_consultation_price_cents != null) {
+    return `${new Intl.NumberFormat("en", {
+      style: "currency",
+      currency: profile.consultation_currency || "EUR",
+      maximumFractionDigits:
+        profile.first_consultation_price_cents % 100 ? 2 : 0,
+    }).format(
+      profile.first_consultation_price_cents / 100,
+    )} · first consultation`;
+  }
+  return profile.price || "Contact for pricing";
+}
+
 export default function Dashboard() {
   const router = useRouter();
-  const [tab, setTab] = useState<"overview" | "profile" | "articles">(
-    "overview",
-  );
+  const [tab, setTab] = useState<
+    "overview" | "inquiries" | "profile" | "calendar" | "settings" | "articles"
+  >("overview");
   const [account, setAccount] = useState({ name: "", email: "" });
   const [profile, setProfile] = useState(blankProfile);
   const [articles, setArticles] = useState<ArticleDraft[]>([]);
+  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [calendar, setCalendar] = useState<CalendarSettings>(defaultCalendar);
   const [article, setArticle] = useState(blankArticle);
   const [status, setStatus] = useState("Loading your workspace…");
+  const [notice, setNotice] = useState<{
+    kind: "success" | "error";
+    message: string;
+    href?: string;
+  } | null>(null);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [articleSaving, setArticleSaving] = useState(false);
 
   async function load() {
     const response = await fetch("/api/account");
@@ -87,6 +175,14 @@ export default function Dashboard() {
     const data = await response.json();
     setAccount(data.account);
     setArticles(data.articles || []);
+    setInquiries(data.inquiries || []);
+    if (data.calendar)
+      setCalendar({
+        ...defaultCalendar,
+        ...data.calendar,
+        weekly_hours:
+          data.calendar.weekly_hours || defaultCalendar.weekly_hours,
+      });
     if (data.articles?.length)
       setArticle((current) =>
         current.title
@@ -100,6 +196,10 @@ export default function Dashboard() {
         tags: data.profile.tags || [],
         awards: data.profile.awards || [],
         services: data.profile.services || [],
+        first_consultation_price_cents:
+          data.profile.first_consultation_price_cents ?? null,
+        consultation_currency: data.profile.consultation_currency || "EUR",
+        first_consultation_free: data.profile.first_consultation_free || false,
         photo_settings: data.profile.photo_settings || {
           position: 50,
           zoom: 100,
@@ -138,60 +238,110 @@ export default function Dashboard() {
   );
   const update = (
     key: keyof Profile,
-    value: string | boolean | string[] | { position: number; zoom: number },
+    value:
+      | string
+      | boolean
+      | number
+      | null
+      | string[]
+      | { x?: number; y?: number; position?: number; zoom: number },
   ) => setProfile((current) => ({ ...current, [key]: value }));
 
   async function saveProfile(publish = profile.published) {
+    setProfileSaving(true);
+    setNotice(null);
     setStatus(publish ? "Publishing profile…" : "Saving profile…");
-    const response = await fetch("/api/account/profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...profile,
-        published: publish,
-        reasons: profile.reasons.join(", "),
-        tags: profile.tags.join(", "),
-        awards: profile.awards.join(", "),
-        services: profile.services.join(", "),
-      }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setStatus(data.error || "Could not save profile.");
-      return;
+    try {
+      const response = await fetch("/api/account/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...profile,
+          published: publish,
+          reasons: profile.reasons.join(", "),
+          tags: profile.tags.join(", "),
+          awards: profile.awards.join(", "),
+          services: profile.services.join(", "),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setStatus(data.error || "Could not save profile.");
+        setNotice({
+          kind: "error",
+          message: data.error || "Could not save profile.",
+        });
+        return;
+      }
+      setProfile({
+        ...data.profile,
+        reasons: data.profile.reasons || [],
+        tags: data.profile.tags || [],
+        awards: data.profile.awards || [],
+        services: data.profile.services || [],
+        photo_settings: data.profile.photo_settings || {
+          position: 50,
+          zoom: 100,
+        },
+        cover_settings: data.profile.cover_settings || {
+          position: 50,
+          zoom: 100,
+        },
+      });
+      setStatus(publish ? "Profile published ✓" : "All changes saved ✓");
+      setNotice({
+        kind: "success",
+        message: publish ? "Your profile is live." : "Profile draft saved.",
+        href: publish ? `/lawyers/${data.profile.slug}` : undefined,
+      });
+    } catch {
+      setStatus("Could not save profile.");
+      setNotice({
+        kind: "error",
+        message:
+          "The profile could not be saved. Check your connection and try again.",
+      });
+    } finally {
+      setProfileSaving(false);
     }
-    setProfile({
-      ...data.profile,
-      reasons: data.profile.reasons || [],
-      tags: data.profile.tags || [],
-      awards: data.profile.awards || [],
-      services: data.profile.services || [],
-      photo_settings: data.profile.photo_settings || {
-        position: 50,
-        zoom: 100,
-      },
-      cover_settings: data.profile.cover_settings || {
-        position: 50,
-        zoom: 100,
-      },
-    });
-    setStatus(publish ? "Profile published ✓" : "All changes saved ✓");
   }
   async function saveArticle(publish = article.published) {
+    setArticleSaving(true);
+    setNotice(null);
     setStatus(publish ? "Publishing article…" : "Saving draft…");
-    const response = await fetch("/api/account/articles", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...article, published: publish }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setStatus(data.error || "Could not save article.");
-      return;
+    try {
+      const response = await fetch("/api/account/articles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...article, published: publish }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setStatus(data.error || "Could not save article.");
+        setNotice({
+          kind: "error",
+          message: data.error || "Could not save article.",
+        });
+        return;
+      }
+      setArticle(data.article);
+      setStatus(publish ? "Article published ✓" : "Draft saved ✓");
+      setNotice({
+        kind: "success",
+        message: publish ? "Your article is live." : "Article draft saved.",
+        href: publish ? `/articles/${data.article.slug}` : undefined,
+      });
+      await load();
+    } catch {
+      setStatus("Could not save article.");
+      setNotice({
+        kind: "error",
+        message:
+          "The article could not be saved. Add a title and content, then try again.",
+      });
+    } finally {
+      setArticleSaving(false);
     }
-    setArticle(data.article);
-    setStatus(publish ? "Article published ✓" : "Draft saved ✓");
-    await load();
   }
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -199,8 +349,60 @@ export default function Dashboard() {
     router.refresh();
   }
 
+  async function respondToInquiry(
+    id: string,
+    nextStatus: Inquiry["status"],
+    note = "",
+  ) {
+    const response = await fetch(`/api/account/inquiries/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: nextStatus, note }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setNotice({
+        kind: "error",
+        message: data.error || "The inquiry could not be updated.",
+      });
+      return;
+    }
+    setInquiries((current) =>
+      current.map((item) =>
+        item.id === id ? { ...item, ...data.inquiry } : item,
+      ),
+    );
+    setNotice({
+      kind: "success",
+      message:
+        nextStatus === "accepted"
+          ? data.invitation?.sent
+            ? "Meeting accepted and calendar invitations sent to both participants."
+            : `Meeting accepted and added to Meet. ${data.invitation?.reason || "Email invitations are pending configuration."}`
+          : nextStatus === "declined"
+            ? data.fallback
+              ? `Inquiry declined. Meet automatically routed it to ${data.fallback.lawyerName}.`
+              : "Inquiry declined. No additional available match was found."
+            : "Clarification requested from the client.",
+    });
+  }
+
   return (
     <main className="dashboard-shell">
+      {notice ? (
+        <div className={`publish-toast ${notice.kind}`} role="status">
+          <span>{notice.kind === "success" ? "✓" : "!"}</span>
+          <div>
+            <strong>{notice.message}</strong>
+            {notice.href ? (
+              <Link href={notice.href}>View live page →</Link>
+            ) : null}
+          </div>
+          <button onClick={() => setNotice(null)} aria-label="Dismiss">
+            ×
+          </button>
+        </div>
+      ) : null}
       <aside className="dashboard-nav">
         <Link className="brand" href="/">
           <span className="brand-mark">M</span>
@@ -227,10 +429,31 @@ export default function Dashboard() {
             Overview
           </button>
           <button
+            className={tab === "inquiries" ? "active" : ""}
+            onClick={() => setTab("inquiries")}
+          >
+            Inquiries{" "}
+            <span>
+              {inquiries.filter((item) => item.status === "pending").length}
+            </span>
+          </button>
+          <button
             className={tab === "profile" ? "active" : ""}
             onClick={() => setTab("profile")}
           >
             Public profile
+          </button>
+          <button
+            className={tab === "calendar" ? "active" : ""}
+            onClick={() => setTab("calendar")}
+          >
+            Calendar
+          </button>
+          <button
+            className={tab === "settings" ? "active" : ""}
+            onClick={() => setTab("settings")}
+          >
+            Settings
           </button>
           <button
             className={tab === "articles" ? "active" : ""}
@@ -250,9 +473,15 @@ export default function Dashboard() {
             <h1>
               {tab === "overview"
                 ? `Good to see you, ${account.name.split(" ")[0] || "there"}.`
-                : tab === "profile"
-                  ? "Design your profile."
-                  : "Share your expertise."}
+                : tab === "inquiries"
+                  ? "Review new client briefs."
+                  : tab === "profile"
+                    ? "Design your profile."
+                    : tab === "calendar"
+                      ? "Your meetings at a glance."
+                      : tab === "settings"
+                        ? "Manage availability and connections."
+                        : "Share your expertise."}
             </h1>
           </div>
           <div className="save-state">
@@ -334,9 +563,13 @@ export default function Dashboard() {
             </article>
           </div>
         )}
+        {tab === "inquiries" && (
+          <InquiryInbox inquiries={inquiries} onRespond={respondToInquiry} />
+        )}
         {tab === "profile" && (
           <div className="editor-layout">
             <div className="profile-editor">
+              <ProfileResearchAssistant profile={profile} setProfile={setProfile} />
               <EditorSection
                 number="00"
                 title="Visual identity"
@@ -478,11 +711,55 @@ export default function Dashboard() {
                     )
                   }
                 />
-                <Field
-                  label="Consultation fee"
-                  value={profile.price}
-                  onChange={(v) => update("price", v)}
-                />
+                <label>
+                  First consultation price
+                  <div className="price-input-row">
+                    <select
+                      value={profile.consultation_currency}
+                      onChange={(event) =>
+                        update("consultation_currency", event.target.value)
+                      }
+                      disabled={profile.first_consultation_free}
+                    >
+                      {["EUR", "CHF", "GBP", "USD"].map((currency) => (
+                        <option key={currency}>{currency}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="150"
+                      disabled={profile.first_consultation_free}
+                      value={
+                        profile.first_consultation_price_cents == null
+                          ? ""
+                          : profile.first_consultation_price_cents / 100
+                      }
+                      onChange={(event) =>
+                        update(
+                          "first_consultation_price_cents",
+                          event.target.value
+                            ? Math.round(Number(event.target.value) * 100)
+                            : null,
+                        )
+                      }
+                    />
+                  </div>
+                  <small>
+                    This will be the amount prepaid through Stripe later.
+                  </small>
+                </label>
+                <label className="free-consultation-toggle">
+                  <input
+                    type="checkbox"
+                    checked={profile.first_consultation_free}
+                    onChange={(event) =>
+                      update("first_consultation_free", event.target.checked)
+                    }
+                  />
+                  First consultation is free
+                </label>
                 <Field
                   label="Availability"
                   value={profile.availability}
@@ -521,16 +798,20 @@ export default function Dashboard() {
                 <button
                   className="card-button"
                   onClick={() => saveProfile(false)}
+                  disabled={profileSaving}
                 >
                   Save draft
                 </button>
                 <button
                   className="primary-button compact"
                   onClick={() => saveProfile(true)}
+                  disabled={profileSaving}
                 >
-                  {profile.published
-                    ? "Update published profile"
-                    : "Publish profile"}
+                  {profileSaving
+                    ? "Publishing…"
+                    : profile.published
+                      ? "Update published profile"
+                      : "Publish profile"}
                   <span>→</span>
                 </button>
               </div>
@@ -541,16 +822,770 @@ export default function Dashboard() {
             </aside>
           </div>
         )}
+        {tab === "calendar" && (
+          <CalendarAgenda
+            inquiries={inquiries}
+            settings={calendar}
+            onRespond={respondToInquiry}
+          />
+        )}
+        {tab === "settings" && (
+          <CalendarEditor
+            settings={calendar}
+            setSettings={setCalendar}
+            setNotice={setNotice}
+          />
+        )}
         {tab === "articles" && (
           <ArticleStudio
             article={article}
             setArticle={setArticle}
             articles={articles}
             onSave={saveArticle}
+            saving={articleSaving}
           />
         )}
       </section>
     </main>
+  );
+}
+
+function CalendarAgenda({
+  inquiries,
+  settings,
+  onRespond,
+}: {
+  inquiries: Inquiry[];
+  settings: CalendarSettings;
+  onRespond: (
+    id: string,
+    status: Inquiry["status"],
+    note?: string,
+  ) => Promise<void>;
+}) {
+  const [busyEvents, setBusyEvents] = useState<
+    Array<{ start: string; end: string; type: "busy" }>
+  >([]);
+  const [sync, setSync] = useState<{
+    ok: boolean;
+    message: string;
+    checkedAt: string;
+  } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selected, setSelected] = useState<Inquiry | null>(null);
+  const week = Array.from({ length: 7 }, (_, offset) => {
+    const date = new Date();
+    date.setDate(date.getDate() + offset);
+    return date;
+  });
+
+  async function refreshCalendar() {
+    setRefreshing(true);
+    fetch("/api/account/calendar")
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((data) => {
+        setBusyEvents(data.events || []);
+        setSync(data.sync || null);
+      })
+      .catch(() => {
+        setBusyEvents([]);
+        setSync({
+          ok: false,
+          message: "Calendar could not be refreshed.",
+          checkedAt: new Date().toISOString(),
+        });
+      })
+      .finally(() => setRefreshing(false));
+  }
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void refreshCalendar(), 0);
+    return () => window.clearTimeout(timer);
+  }, [settings.enabled, settings.ical_url]);
+
+  const isSameDay = (value: string, day: Date) => {
+    const date = new Date(value);
+    return (
+      !Number.isNaN(date.getTime()) &&
+      date.toDateString() === day.toDateString()
+    );
+  };
+
+  return (
+    <section className="calendar-card calendar-agenda-card">
+      <div className="calendar-agenda-heading">
+        <div>
+          <p className="section-kicker">Your week</p>
+          <h2>Calendar preview</h2>
+        </div>
+        <div className="calendar-legend">
+          <span className="busy">Connected calendar</span>
+          <span className="pending">Needs review</span>
+          <span className="accepted">Accepted meeting</span>
+        </div>
+      </div>
+      <div
+        className={`calendar-sync-status ${sync?.ok ? "connected" : "error"}`}
+      >
+        <div>
+          <strong>
+            {sync?.ok ? "Calendar connected" : "Calendar needs attention"}
+          </strong>
+          <span>{sync?.message || "Checking your connected calendar…"}</span>
+        </div>
+        <button onClick={() => void refreshCalendar()} disabled={refreshing}>
+          {refreshing ? "Refreshing…" : "Refresh calendar"}
+        </button>
+      </div>
+      <div className="week-calendar">
+        {week.map((day, index) => {
+          const busy = busyEvents.filter((event) =>
+            isSameDay(event.start, day),
+          );
+          const meetings = inquiries.filter((inquiry) =>
+            isSameDay(inquiry.meeting_start || inquiry.meeting_time, day),
+          );
+          return (
+            <div className="calendar-day" key={day.toISOString()}>
+              <header className={index === 0 ? "today" : ""}>
+                <span>
+                  {day.toLocaleDateString("en", { weekday: "short" })}
+                </span>
+                <strong>{day.getDate()}</strong>
+              </header>
+              <div>
+                {busy.map((event) => (
+                  <article className="calendar-event busy" key={event.start}>
+                    <small>
+                      {new Date(event.start).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </small>
+                    <strong>Busy</strong>
+                  </article>
+                ))}
+                {meetings.map((inquiry) => (
+                  <button
+                    className={`calendar-event ${inquiry.status}`}
+                    key={inquiry.id}
+                    onClick={() => setSelected(inquiry)}
+                  >
+                    <small>{inquiry.meeting_time}</small>
+                    <strong>{inquiry.client_name}</strong>
+                    <span>
+                      {inquiry.status === "pending"
+                        ? "Review proposal"
+                        : inquiry.status.replace("_", " ")}
+                    </span>
+                  </button>
+                ))}
+                {!busy.length && !meetings.length ? (
+                  <small className="calendar-free">Open</small>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {selected ? (
+        <div className="calendar-event-preview">
+          <button
+            aria-label="Close meeting preview"
+            onClick={() => setSelected(null)}
+          >
+            ×
+          </button>
+          <div>
+            <span className={`inquiry-status ${selected.status}`}>
+              {selected.status.replace("_", " ")}
+            </span>
+            <h3>
+              {selected.client_name} · {selected.brief.practice}
+            </h3>
+            <p>{selected.brief.summary}</p>
+            <small>
+              {selected.meeting_time} · {selected.brief.meetingFormat}
+            </small>
+          </div>
+          {selected.status === "pending" ? (
+            <div className="calendar-preview-actions">
+              <button
+                className="decline-button"
+                onClick={() => void onRespond(selected.id, "declined")}
+              >
+                Decline
+              </button>
+              <button
+                className="primary-button compact"
+                onClick={async () => {
+                  await onRespond(selected.id, "accepted");
+                  setSelected({ ...selected, status: "accepted" });
+                }}
+              >
+                Accept meeting <span>→</span>
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function CalendarEditor({
+  settings,
+  setSettings,
+  setNotice,
+}: {
+  settings: CalendarSettings;
+  setSettings: (settings: CalendarSettings) => void;
+  setNotice: (notice: { kind: "success" | "error"; message: string }) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const days = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+  ];
+
+  async function save() {
+    setSaving(true);
+    const response = await fetch("/api/account/calendar", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings),
+    });
+    const data = await response.json().catch(() => ({}));
+    setSaving(false);
+    if (!response.ok) {
+      setNotice({
+        kind: "error",
+        message: data.error || "Calendar could not be saved.",
+      });
+      return;
+    }
+    setSettings({ ...settings, ...(data.settings || {}) });
+    setNotice({
+      kind: "success",
+      message: "Calendar and booking hours saved.",
+    });
+  }
+
+  return (
+    <div className="calendar-editor">
+      <section className="calendar-card calendar-intro">
+        <p className="section-kicker">Calendar connection</p>
+        <h2>Only show times when you are genuinely free.</h2>
+        <p>
+          Meet reads your private iCalendar feed to remove busy periods. The
+          feed address stays on the server and is never shown to clients.
+        </p>
+        <div className="provider-grid">
+          {["google", "apple", "outlook", "ical"].map((provider) => (
+            <button
+              key={provider}
+              className={settings.provider === provider ? "selected" : ""}
+              onClick={() => setSettings({ ...settings, provider })}
+            >
+              {provider === "ical"
+                ? "Other iCalendar"
+                : provider[0].toUpperCase() + provider.slice(1)}
+            </button>
+          ))}
+        </div>
+        <label>
+          Private iCalendar (.ics) address
+          <input
+            type="password"
+            placeholder="https://…/calendar.ics"
+            value={settings.ical_url}
+            onChange={(event) =>
+              setSettings({ ...settings, ical_url: event.target.value })
+            }
+          />
+        </label>
+        <small>
+          Google: Calendar settings → Integrate calendar → Secret address in
+          iCal format. Apple and Outlook: paste a private or published ICS link.
+        </small>
+      </section>
+
+      <section className="calendar-card">
+        <p className="section-kicker">Booking rules</p>
+        <div className="calendar-grid">
+          <label>
+            Time zone
+            <input
+              value={settings.timezone}
+              onChange={(event) =>
+                setSettings({ ...settings, timezone: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Consultation length
+            <select
+              value={settings.duration_minutes}
+              onChange={(event) =>
+                setSettings({
+                  ...settings,
+                  duration_minutes: Number(event.target.value),
+                })
+              }
+            >
+              {[30, 45, 60, 90].map((value) => (
+                <option key={value} value={value}>
+                  {value} minutes
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Buffer between meetings
+            <select
+              value={settings.buffer_minutes}
+              onChange={(event) =>
+                setSettings({
+                  ...settings,
+                  buffer_minutes: Number(event.target.value),
+                })
+              }
+            >
+              {[0, 10, 15, 30].map((value) => (
+                <option key={value} value={value}>
+                  {value} minutes
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Book up to
+            <select
+              value={settings.booking_days_ahead}
+              onChange={(event) =>
+                setSettings({
+                  ...settings,
+                  booking_days_ahead: Number(event.target.value),
+                })
+              }
+            >
+              {[7, 14, 21, 30, 60].map((value) => (
+                <option key={value} value={value}>
+                  {value} days ahead
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section className="calendar-card">
+        <p className="section-kicker">Your open hours</p>
+        <div className="hours-list">
+          {days.map((day) => {
+            const hours = settings.weekly_hours[day];
+            return (
+              <div className="hours-row" key={day}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(hours)}
+                    onChange={(event) => {
+                      const weekly_hours = { ...settings.weekly_hours };
+                      if (event.target.checked)
+                        weekly_hours[day] = ["09:00", "17:00"];
+                      else delete weekly_hours[day];
+                      setSettings({ ...settings, weekly_hours });
+                    }}
+                  />
+                  <strong>{day[0].toUpperCase() + day.slice(1)}</strong>
+                </label>
+                {hours ? (
+                  <>
+                    <input
+                      type="time"
+                      value={hours[0]}
+                      onChange={(event) =>
+                        setSettings({
+                          ...settings,
+                          weekly_hours: {
+                            ...settings.weekly_hours,
+                            [day]: [event.target.value, hours[1]],
+                          },
+                        })
+                      }
+                    />
+                    <span>to</span>
+                    <input
+                      type="time"
+                      value={hours[1]}
+                      onChange={(event) =>
+                        setSettings({
+                          ...settings,
+                          weekly_hours: {
+                            ...settings.weekly_hours,
+                            [day]: [hours[0], event.target.value],
+                          },
+                        })
+                      }
+                    />
+                  </>
+                ) : (
+                  <small>Unavailable</small>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="calendar-publish">
+        <div className="calendar-enabled-control">
+          <input
+            id="calendar-enabled"
+            aria-label="Offer these times to clients"
+            type="checkbox"
+            checked={settings.enabled}
+            onChange={(event) =>
+              setSettings({ ...settings, enabled: event.target.checked })
+            }
+          />
+          <span>
+            <strong>Offer these times to clients</strong>
+            <small>
+              Busy events in your connected calendar are automatically excluded.
+            </small>
+          </span>
+        </div>
+        <button
+          className="primary-button compact"
+          onClick={save}
+          disabled={saving}
+        >
+          {saving ? "Saving…" : "Save availability"}
+          <span>→</span>
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function InquiryInbox({
+  inquiries,
+  onRespond,
+}: {
+  inquiries: Inquiry[];
+  onRespond: (
+    id: string,
+    status: Inquiry["status"],
+    note?: string,
+  ) => Promise<void>;
+}) {
+  const [selectedId, setSelectedId] = useState(inquiries[0]?.id || "");
+  const [note, setNote] = useState("");
+  const selected =
+    inquiries.find((item) => item.id === selectedId) || inquiries[0];
+
+  if (!selected)
+    return (
+      <div className="inquiry-empty">
+        <span>✓</span>
+        <h2>Your inquiry inbox is clear.</h2>
+        <p>
+          New clients matched to your practice will arrive here with a
+          structured case brief and proposed meeting time.
+        </p>
+      </div>
+    );
+
+  return (
+    <div className="inquiry-workspace">
+      <aside className="inquiry-list">
+        <div>
+          <p className="section-kicker">Client inquiries</p>
+          <small>{inquiries.length} total</small>
+        </div>
+        {inquiries.map((item) => (
+          <button
+            key={item.id}
+            className={item.id === selected.id ? "selected" : ""}
+            onClick={() => {
+              setSelectedId(item.id);
+              setNote(item.lawyer_note || "");
+            }}
+          >
+            <span className={`inquiry-status ${item.status}`}>
+              {item.status.replace("_", " ")}
+            </span>
+            <strong>{item.client_name}</strong>
+            <small>
+              {item.brief.practice} · {item.brief.urgency}
+            </small>
+          </button>
+        ))}
+      </aside>
+      <section className="case-brief-panel">
+        <header>
+          <div>
+            <p className="section-kicker">Case brief</p>
+            <h2>{selected.brief.practice} matter</h2>
+            <p>
+              {selected.client_name} · {selected.client_email}
+            </p>
+          </div>
+          <span
+            className={`brief-urgency ${selected.brief.urgency.toLowerCase().replace("-", "")}`}
+          >
+            {selected.brief.urgency}
+          </span>
+        </header>
+        <div className="brief-summary">
+          <small>What happened</small>
+          {selected.brief.dispute ? (
+            <strong>{selected.brief.dispute}</strong>
+          ) : null}
+          <p>{selected.brief.summary}</p>
+        </div>
+        {selected.brief.conversation?.length ? (
+          <div className="lawyer-conversation">
+            <small>Full Meet conversation</small>
+            {selected.brief.conversation.map((message, index) => (
+              <div className={message.role} key={`${message.role}-${index}`}>
+                <strong>
+                  {message.role === "assistant" ? "Meet" : selected.client_name}
+                </strong>
+                <p>{message.content}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <div className="brief-facts">
+          <div>
+            <small>Jurisdiction</small>
+            <strong>{selected.brief.jurisdiction}</strong>
+          </div>
+          <div>
+            <small>Deadline</small>
+            <strong>{selected.brief.deadline}</strong>
+          </div>
+          <div>
+            <small>Desired outcome</small>
+            <strong>{selected.brief.desiredOutcome}</strong>
+          </div>
+          <div>
+            <small>Meeting</small>
+            <strong>{selected.meeting_time}</strong>
+          </div>
+          <div>
+            <small>Language</small>
+            <strong>{selected.brief.language}</strong>
+          </div>
+          <div>
+            <small>Format</small>
+            <strong>{selected.brief.meetingFormat}</strong>
+          </div>
+        </div>
+        <div className="brief-lists">
+          <div>
+            <small>Conflict-check names</small>
+            <p>{selected.brief.parties}</p>
+          </div>
+          <div>
+            <small>Still to clarify</small>
+            <ul>
+              {(selected.brief.missingInformation || []).map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        {selected.status === "pending" ? (
+          <div className="inquiry-response">
+            <label>
+              Optional note
+              <textarea
+                rows={3}
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="Ask one focused question or add a note for the client."
+              />
+            </label>
+            <div>
+              <button
+                className="decline-button"
+                onClick={() => void onRespond(selected.id, "declined", note)}
+              >
+                Decline
+              </button>
+              <button
+                className="card-button"
+                onClick={() =>
+                  void onRespond(selected.id, "clarification_requested", note)
+                }
+              >
+                Ask for clarification
+              </button>
+              <button
+                className="primary-button compact"
+                onClick={() => void onRespond(selected.id, "accepted", note)}
+              >
+                Accept meeting <span>→</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="response-complete">
+            <strong>
+              Response recorded: {selected.status.replace("_", " ")}
+            </strong>
+            {selected.lawyer_note ? <p>{selected.lawyer_note}</p> : null}
+          </div>
+        )}
+        <Link className="matter-open-link" href={`/matters/${selected.id}`}>
+          Open shared matter workspace <span>→</span>
+        </Link>
+      </section>
+    </div>
+  );
+}
+
+type ProfileResearchDraft = Pick<
+  Profile,
+  | "name"
+  | "specialty"
+  | "practice"
+  | "location"
+  | "firm_name"
+  | "tagline"
+  | "languages"
+  | "tags"
+  | "experience"
+  | "credentials"
+  | "education"
+  | "awards"
+  | "services"
+  | "bio"
+  | "reasons"
+  | "website"
+  | "linkedin"
+  | "consultation_format"
+> & {
+  confidence: "high" | "medium" | "low";
+  identityNote: string;
+  unsupportedClaims: string[];
+};
+
+function ProfileResearchAssistant({
+  profile,
+  setProfile,
+}: {
+  profile: Profile;
+  setProfile: React.Dispatch<React.SetStateAction<Profile>>;
+}) {
+  const [details, setDetails] = useState({
+    name: profile.name,
+    firm: profile.firm_name,
+    location: profile.location === "Remote" ? "" : profile.location,
+    website: profile.website,
+    linkedin: profile.linkedin,
+  });
+  const [draft, setDraft] = useState<ProfileResearchDraft | null>(null);
+  const [sources, setSources] = useState<Array<{ title: string; url: string; domain: string }>>([]);
+  const [researching, setResearching] = useState(false);
+  const [identityConfirmed, setIdentityConfirmed] = useState(false);
+  const [researchError, setResearchError] = useState("");
+
+  async function researchProfile() {
+    setResearching(true);
+    setResearchError("");
+    setDraft(null);
+    try {
+      const response = await fetch("/api/account/profile/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...details, confirmIdentity: identityConfirmed }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Research could not be completed.");
+      setDraft(result.draft);
+      setSources(result.sources || []);
+    } catch (error) {
+      setResearchError(error instanceof Error ? error.message : "Research could not be completed.");
+    } finally {
+      setResearching(false);
+    }
+  }
+
+  function applyDraft() {
+    if (!draft) return;
+    setProfile((current) => ({
+      ...current,
+      name: draft.name || current.name,
+      specialty: draft.specialty || current.specialty,
+      practice: draft.practice || current.practice,
+      location: draft.location || current.location,
+      firm_name: draft.firm_name || current.firm_name,
+      tagline: draft.tagline || current.tagline,
+      languages: draft.languages || current.languages,
+      tags: draft.tags.length ? draft.tags : current.tags,
+      experience: draft.experience || current.experience,
+      credentials: draft.credentials || current.credentials,
+      education: draft.education || current.education,
+      awards: draft.awards.length ? draft.awards : current.awards,
+      services: draft.services.length ? draft.services : current.services,
+      bio: draft.bio || current.bio,
+      reasons: draft.reasons.length ? draft.reasons : current.reasons,
+      website: draft.website || current.website,
+      linkedin: draft.linkedin || current.linkedin,
+      consultation_format: draft.consultation_format || current.consultation_format,
+    }));
+    setDraft(null);
+    setSources([]);
+  }
+
+  return (
+    <section className="profile-research-card">
+      <div className="profile-research-heading">
+        <div>
+          <span className="ai-pill">AI profile researcher</span>
+          <h2>Let Meet prepare your first draft</h2>
+          <p>Meet searches public professional sources, resolves your identity and turns verified facts into editable profile fields.</p>
+        </div>
+        <span className="research-step">00</span>
+      </div>
+      <div className="profile-research-fields">
+        <label>Professional name<input value={details.name} onChange={(event) => setDetails({ ...details, name: event.target.value })} /></label>
+        <label>Firm or organisation<input value={details.firm} onChange={(event) => setDetails({ ...details, firm: event.target.value })} placeholder="Helps distinguish similar names" /></label>
+        <label>City or jurisdiction<input value={details.location} onChange={(event) => setDetails({ ...details, location: event.target.value })} /></label>
+        <label>Official profile or website<input type="url" value={details.website} onChange={(event) => setDetails({ ...details, website: event.target.value })} placeholder="https://…" /></label>
+        <label className="wide">LinkedIn (optional)<input type="url" value={details.linkedin} onChange={(event) => setDetails({ ...details, linkedin: event.target.value })} placeholder="https://linkedin.com/in/…" /></label>
+      </div>
+      <div className="profile-research-actions">
+        <label className="research-confirmation"><input type="checkbox" checked={identityConfirmed} onChange={(event) => setIdentityConfirmed(event.target.checked)} />I confirm this is my own professional identity and public profile.</label>
+        <button className="primary-button compact" onClick={() => void researchProfile()} disabled={researching || details.name.trim().length < 4 || !identityConfirmed}>
+          {researching ? "Researching public sources…" : "Research and draft my profile"}<span>→</span>
+        </button>
+        <small>Uses public professional information only. Nothing is saved or published until you review it.</small>
+      </div>
+      {researchError ? <p className="profile-research-error" role="alert">{researchError}</p> : null}
+      {draft ? (
+        <div className="profile-research-result">
+          <header>
+            <div><span>{draft.confidence} identity confidence</span><strong>{draft.specialty}</strong><small>{draft.identityNote}</small></div>
+            <button className="primary-button compact" onClick={applyDraft}>Apply this draft <span>→</span></button>
+          </header>
+          <p>{draft.bio}</p>
+          <div className="research-tags">{draft.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
+          {sources.length ? <div className="research-sources"><small>Sources checked</small>{sources.map((source) => <a href={source.url} target="_blank" rel="noreferrer" key={source.url}>{source.title || source.domain}<span>↗</span></a>)}</div> : null}
+          {draft.unsupportedClaims.length ? <details><summary>Information still requiring your confirmation</summary><ul>{draft.unsupportedClaims.map((claim) => <li key={claim}>{claim}</li>)}</ul></details> : null}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -615,7 +1650,7 @@ function ProfilePreview({ profile }: { profile: Profile }) {
             fill
             sizes="360px"
             style={{
-              objectPosition: `50% ${profile.cover_settings.position}%`,
+              objectPosition: `${profile.cover_settings.x ?? 50}% ${profile.cover_settings.y ?? profile.cover_settings.position ?? 50}%`,
               transform: `scale(${profile.cover_settings.zoom / 100})`,
             }}
             unoptimized
@@ -631,7 +1666,7 @@ function ProfilePreview({ profile }: { profile: Profile }) {
             width={55}
             height={55}
             style={{
-              objectPosition: `50% ${profile.photo_settings.position}%`,
+              objectPosition: `${profile.photo_settings.x ?? 50}% ${profile.photo_settings.y ?? profile.photo_settings.position ?? 50}%`,
               transform: `scale(${profile.photo_settings.zoom / 100})`,
             }}
             unoptimized
@@ -675,7 +1710,7 @@ function ProfilePreview({ profile }: { profile: Profile }) {
         </div>
         <div>
           <small>Consultation</small>
-          <strong>{profile.price}</strong>
+          <strong>{formatConsultationPrice(profile)}</strong>
         </div>
       </div>
     </div>

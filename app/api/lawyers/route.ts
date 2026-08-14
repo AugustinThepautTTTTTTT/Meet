@@ -1,16 +1,26 @@
 import { NextResponse } from "next/server";
 import { getLawyerDb } from "@/lib/database";
+import { ensureLawyerWorkflowSchema } from "@/lib/workflow-schema";
 
 export async function GET() {
   try {
+    await ensureLawyerWorkflowSchema();
     const sql = getLawyerDb();
     const rows = await sql`
+      WITH preferred_lawyers AS (
+        SELECT l.*, ROW_NUMBER() OVER (
+          PARTITION BY lower(name)
+          ORDER BY (account_id IS NOT NULL) DESC, created_at DESC
+        ) AS profile_priority
+        FROM lawyers l
+        WHERE published = true
+      )
       SELECT l.*, p.title AS post, p.slug AS post_slug
-      FROM lawyers l
+      FROM preferred_lawyers l
       LEFT JOIN LATERAL (
         SELECT title, slug FROM posts WHERE lawyer_id = l.id AND published = true ORDER BY created_at DESC LIMIT 1
       ) p ON true
-      WHERE l.published = true
+      WHERE l.profile_priority = 1
       ORDER BY l.featured_rank ASC, l.created_at ASC
     `;
     const lawyers = rows.map((row) => ({
@@ -23,6 +33,9 @@ export async function GET() {
       languages: row.languages,
       match: row.match,
       price: row.price,
+      firstConsultationPriceCents: row.first_consultation_price_cents,
+      consultationCurrency: row.consultation_currency,
+      firstConsultationFree: row.first_consultation_free,
       availability: row.availability,
       accent: row.accent,
       reasons: row.reasons,

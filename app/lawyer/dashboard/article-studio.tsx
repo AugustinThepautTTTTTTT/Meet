@@ -1,12 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArticleContent,
   type ArticleBlock,
 } from "@/app/components/article-content";
 import MediaUpload from "./media-upload";
+import ImageCropper from "./image-cropper";
 
 export type ArticleDraft = {
   id?: string;
@@ -15,7 +16,7 @@ export type ArticleDraft = {
   excerpt: string;
   body: string;
   cover_image_url: string;
-  cover_settings: { position: number; zoom: number };
+  cover_settings: { x?: number; y?: number; position?: number; zoom: number };
   content: ArticleBlock[];
   theme: string;
   author_note: string;
@@ -27,7 +28,7 @@ export const blankArticle: ArticleDraft = {
   excerpt: "",
   body: "",
   cover_image_url: "",
-  cover_settings: { position: 50, zoom: 100 },
+  cover_settings: { x: 50, y: 50, zoom: 100 },
   content: [],
   theme: "editorial",
   author_note: "",
@@ -41,18 +42,101 @@ const blockLabels = {
   image: "Image",
 };
 
+function freshArticle(): ArticleDraft {
+  return {
+    ...blankArticle,
+    content: [],
+    cover_settings: { ...blankArticle.cover_settings },
+  };
+}
+
+function articleFingerprint(article: ArticleDraft) {
+  return JSON.stringify({
+    title: article.title,
+    excerpt: article.excerpt,
+    body: article.body,
+    cover_image_url: article.cover_image_url,
+    cover_settings: article.cover_settings,
+    content: article.content,
+    theme: article.theme,
+    author_note: article.author_note,
+    published: article.published,
+  });
+}
+
 export default function ArticleStudio({
   article,
   setArticle,
   articles,
   onSave,
+  saving,
 }: {
   article: ArticleDraft;
   setArticle: (article: ArticleDraft) => void;
   articles: ArticleDraft[];
   onSave: (publish: boolean) => Promise<void>;
+  saving: boolean;
 }) {
   const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const [filter, setFilter] = useState<"all" | "draft" | "published">("all");
+  const [croppingBlock, setCroppingBlock] = useState<string | null>(null);
+  const savedVersion = article.id
+    ? articles.find((item) => item.id === article.id)
+    : undefined;
+  const isDirty = article.id
+    ? Boolean(savedVersion) &&
+      articleFingerprint(article) !== articleFingerprint(savedVersion!)
+    : articleFingerprint(article) !== articleFingerprint(blankArticle);
+  const hasContent = Boolean(
+    article.body.trim() ||
+    article.content.some((block) =>
+      block.type === "image" ? block.url : block.text.trim(),
+    ),
+  );
+  const canSave = Boolean(article.title.trim() && hasContent);
+  const publishedCount = articles.filter((item) => item.published).length;
+  const draftCount = articles.length - publishedCount;
+  const visibleArticles = useMemo(
+    () =>
+      articles.filter((item) =>
+        filter === "all"
+          ? true
+          : filter === "published"
+            ? item.published
+            : !item.published,
+      ),
+    [articles, filter],
+  );
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [isDirty]);
+
+  function canLeaveCurrent() {
+    return (
+      !isDirty ||
+      window.confirm(
+        "You have unsaved changes. Leave this article without saving them?",
+      )
+    );
+  }
+
+  function createNewArticle() {
+    if (!canLeaveCurrent()) return;
+    setArticle(freshArticle());
+    setMode("edit");
+  }
+
+  function openArticle(item: ArticleDraft) {
+    if (item.id === article.id || !canLeaveCurrent()) return;
+    setArticle({ ...item, content: item.content || [] });
+    setMode("edit");
+  }
   function add(type: ArticleBlock["type"]) {
     setArticle({
       ...article,
@@ -66,8 +150,10 @@ export default function ArticleStudio({
           caption: "",
           width: "wide",
           align: "center",
-          aspect: "auto",
-          position: 50,
+          aspect: "landscape",
+          x: 50,
+          y: 50,
+          zoom: 1,
         },
       ],
     });
@@ -107,32 +193,104 @@ export default function ArticleStudio({
   return (
     <div className="wordpress-studio">
       <aside className="article-library">
-        <div>
-          <p className="section-kicker">Your library</p>
-          <button
-            className="new-article"
-            onClick={() => setArticle({ ...blankArticle })}
-          >
-            + New
+        <div className="library-heading">
+          <div>
+            <p className="section-kicker">Article library</p>
+            <small>{articles.length} saved articles</small>
+          </div>
+          <button className="new-article" onClick={createNewArticle}>
+            <span>＋</span> Create article
           </button>
         </div>
-        {articles.map((item) => (
+        <div className="library-filters" aria-label="Filter articles">
           <button
-            className={item.id === article.id ? "selected" : ""}
-            key={item.id}
-            onClick={() => setArticle({ ...item, content: item.content || [] })}
+            className={filter === "all" ? "active" : ""}
+            onClick={() => setFilter("all")}
           >
-            <span>{item.published ? "Published" : "Draft"}</span>
-            <strong>{item.title}</strong>
-            <small>
-              {item.updated_at
-                ? new Date(item.updated_at).toLocaleDateString()
-                : ""}
-            </small>
+            All <span>{articles.length}</span>
           </button>
-        ))}
+          <button
+            className={filter === "draft" ? "active" : ""}
+            onClick={() => setFilter("draft")}
+          >
+            Drafts <span>{draftCount}</span>
+          </button>
+          <button
+            className={filter === "published" ? "active" : ""}
+            onClick={() => setFilter("published")}
+          >
+            Live <span>{publishedCount}</span>
+          </button>
+        </div>
+        {!article.id ? (
+          <div className="new-article-marker">
+            <span>New</span>
+            <strong>{article.title || "Untitled article"}</strong>
+            <small>{isDirty ? "Not saved yet" : "Ready to start"}</small>
+          </div>
+        ) : null}
+        <div className="library-list">
+          {visibleArticles.map((item) => (
+            <button
+              className={item.id === article.id ? "selected" : ""}
+              aria-current={item.id === article.id ? "true" : undefined}
+              key={item.id}
+              onClick={() => openArticle(item)}
+            >
+              <span
+                className={`article-status ${item.published ? "published" : "draft"}`}
+              >
+                {item.published ? "Live" : "Draft"}
+              </span>
+              <strong>{item.title || "Untitled article"}</strong>
+              <small>
+                Updated{" "}
+                {item.updated_at
+                  ? new Date(item.updated_at).toLocaleDateString(undefined, {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })
+                  : "recently"}
+              </small>
+              {item.id === article.id ? <i>Currently editing</i> : null}
+            </button>
+          ))}
+          {!visibleArticles.length && articles.length ? (
+            <p className="library-empty">No articles in this view.</p>
+          ) : null}
+          {!articles.length ? (
+            <div className="library-empty welcome">
+              <strong>Your ideas belong here.</strong>
+              <p>
+                Create practical guidance that helps clients understand your
+                expertise.
+              </p>
+            </div>
+          ) : null}
+        </div>
       </aside>
       <section className="page-builder">
+        <div className="article-context-bar">
+          <div>
+            <span>
+              {article.id ? "Editing article" : "Creating new article"}
+            </span>
+            <strong>{article.title || "Untitled article"}</strong>
+          </div>
+          <div className="article-context-state">
+            <span className={article.published ? "live" : "draft"}>
+              {article.published ? "Live" : article.id ? "Draft" : "New"}
+            </span>
+            <small>
+              {isDirty
+                ? "Unsaved changes"
+                : article.id
+                  ? "All changes saved"
+                  : "Not saved yet"}
+            </small>
+          </div>
+        </div>
         <div className="builder-toolbar">
           <div>
             <button
@@ -308,21 +466,39 @@ export default function ArticleStudio({
                               <option value="portrait">Portrait</option>
                             </select>
                           </label>
-                          <label>
-                            Focal point
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              value={block.position ?? 50}
-                              onChange={(e) =>
-                                patch(block.id, {
-                                  position: Number(e.target.value),
-                                })
-                              }
-                            />
-                          </label>
+                          <button
+                            className="edit-image-button"
+                            onClick={() => setCroppingBlock(block.id)}
+                          >
+                            ⛶ Crop & reposition
+                          </button>
                         </div>
+                        {croppingBlock === block.id && block.url ? (
+                          <ImageCropper
+                            url={block.url}
+                            title="Crop article image"
+                            allowAspect
+                            initial={{
+                              x: block.x ?? 50,
+                              y: block.y ?? block.position ?? 50,
+                              zoom: Math.round((block.zoom ?? 1) * 100),
+                              aspect:
+                                block.aspect === "auto"
+                                  ? "landscape"
+                                  : block.aspect,
+                            }}
+                            onCancel={() => setCroppingBlock(null)}
+                            onApply={(next) => {
+                              patch(block.id, {
+                                x: next.x,
+                                y: next.y,
+                                zoom: next.zoom / 100,
+                                aspect: next.aspect,
+                              });
+                              setCroppingBlock(null);
+                            }}
+                          />
+                        ) : null}
                       </>
                     ) : block.type === "heading" ? (
                       <input
@@ -384,16 +560,47 @@ export default function ArticleStudio({
           </>
         )}
         <div className="builder-actions">
-          <button className="card-button" onClick={() => onSave(false)}>
-            Save draft
-          </button>
-          <button
-            className="primary-button compact"
-            onClick={() => onSave(true)}
-          >
-            {article.published ? "Update article" : "Publish article"}
-            <span>→</span>
-          </button>
+          <div className="article-readiness">
+            <strong>
+              {canSave ? "Ready to save" : "Complete the essentials"}
+            </strong>
+            <span className={article.title.trim() ? "done" : ""}>Title</span>
+            <span className={hasContent ? "done" : ""}>Content</span>
+            <span className={article.excerpt.trim() ? "done" : ""}>
+              Introduction
+            </span>
+          </div>
+          <div className="article-action-buttons">
+            <button
+              className="card-button"
+              disabled={saving || !canSave || !isDirty}
+              onClick={() => onSave(article.published)}
+            >
+              {saving
+                ? "Saving…"
+                : article.id
+                  ? "Save changes"
+                  : "Save as draft"}
+            </button>
+            <button
+              className="primary-button compact"
+              onClick={() => onSave(true)}
+              disabled={saving || !canSave}
+            >
+              {saving
+                ? "Publishing…"
+                : article.published
+                  ? "Update live article"
+                  : "Publish article"}
+              <span>→</span>
+            </button>
+          </div>
+          {!canSave ? (
+            <p>
+              Add a title and at least one content block before saving or
+              publishing.
+            </p>
+          ) : null}
         </div>
       </section>
     </div>
@@ -415,7 +622,7 @@ function ArticlePreview({ article }: { article: ArticleDraft }) {
             alt=""
             fill
             style={{
-              objectPosition: `50% ${article.cover_settings?.position ?? 50}%`,
+              objectPosition: `${article.cover_settings?.x ?? 50}% ${article.cover_settings?.y ?? article.cover_settings?.position ?? 50}%`,
               transform: `scale(${(article.cover_settings?.zoom ?? 100) / 100})`,
             }}
             unoptimized

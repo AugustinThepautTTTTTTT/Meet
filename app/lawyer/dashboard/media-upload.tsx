@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { ChangeEvent, useState } from "react";
+import ImageCropper, { type CropSettings } from "./image-cropper";
 
 export default function MediaUpload({
   label,
@@ -17,10 +18,16 @@ export default function MediaUpload({
   value: string;
   shape?: "wide" | "portrait";
   onChange: (url: string) => void;
-  settings?: { position: number; zoom: number };
-  onSettings?: (settings: { position: number; zoom: number }) => void;
+  settings?: Partial<CropSettings> & { position?: number; zoom: number };
+  onSettings?: (settings: CropSettings) => void;
 }) {
   const [status, setStatus] = useState("");
+  const [cropping, setCropping] = useState(false);
+  const normalized: CropSettings = {
+    x: settings?.x ?? 50,
+    y: settings?.y ?? settings?.position ?? 50,
+    zoom: settings?.zoom ?? 100,
+  };
   async function upload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -41,7 +48,7 @@ export default function MediaUpload({
     setStatus("Uploaded ✓");
   }
   return (
-    <div className={`media-upload ${shape}`}>
+    <div className={`media-upload ${shape} ${value ? "has-image" : ""}`}>
       {value ? (
         <Image
           src={value}
@@ -50,8 +57,8 @@ export default function MediaUpload({
           sizes={shape === "portrait" ? "160px" : "600px"}
           unoptimized
           style={{
-            objectPosition: `50% ${settings?.position ?? 50}%`,
-            transform: `scale(${(settings?.zoom ?? 100) / 100})`,
+            objectPosition: `${normalized.x}% ${normalized.y}%`,
+            transform: `scale(${normalized.zoom / 100})`,
           }}
         />
       ) : (
@@ -69,33 +76,22 @@ export default function MediaUpload({
         <span>{value ? "Replace image" : `Upload ${label.toLowerCase()}`}</span>
       </label>
       {status ? <small className="upload-status">{status}</small> : null}
-      {value && settings && onSettings ? (
-        <div className="media-adjust">
-          <label>
-            Position
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={settings.position}
-              onChange={(e) =>
-                onSettings({ ...settings, position: Number(e.target.value) })
-              }
-            />
-          </label>
-          <label>
-            Zoom
-            <input
-              type="range"
-              min="100"
-              max="180"
-              value={settings.zoom}
-              onChange={(e) =>
-                onSettings({ ...settings, zoom: Number(e.target.value) })
-              }
-            />
-          </label>
-        </div>
+      {value && onSettings ? (
+        <button className="open-crop" onClick={() => setCropping(true)}>
+          ⛶ Edit crop
+        </button>
+      ) : null}
+      {cropping && value && onSettings ? (
+        <ImageCropper
+          url={value}
+          title={`Adjust ${label.toLowerCase()}`}
+          initial={normalized}
+          onCancel={() => setCropping(false)}
+          onApply={(next) => {
+            onSettings(next);
+            setCropping(false);
+          }}
+        />
       ) : null}
     </div>
   );

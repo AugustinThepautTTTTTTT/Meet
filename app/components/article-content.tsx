@@ -10,6 +10,9 @@ export type ArticleBlock = {
   align?: "left" | "center" | "right";
   aspect?: "auto" | "square" | "landscape" | "portrait";
   position?: number;
+  x?: number;
+  y?: number;
+  zoom?: number;
 };
 
 export function ArticleContent({ blocks }: { blocks: ArticleBlock[] }) {
@@ -39,7 +42,10 @@ export function ArticleContent({ blocks }: { blocks: ArticleBlock[] }) {
                   alt={block.caption || "Article illustration"}
                   fill
                   sizes="(max-width: 800px) 100vw, 1000px"
-                  style={{ objectPosition: `50% ${block.position ?? 50}%` }}
+                  style={{
+                    objectPosition: `${block.x ?? 50}% ${block.y ?? block.position ?? 50}%`,
+                    transform: `scale(${block.zoom ?? 1})`,
+                  }}
                   unoptimized
                 />
               </div>
