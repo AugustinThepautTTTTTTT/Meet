@@ -4361,10 +4361,6 @@ footer div a {
   display: grid;
   gap: 10px;
 }
-.chat-row.document-note p {
-  max-width: 100%;
-  background: #edf5f1;
-}
 .chat-documents article {
   position: relative;
   margin-left: 34px;
