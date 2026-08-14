@@ -60,7 +60,7 @@ export async function POST(request: Request) {
 Write only the actual client-facing reply, with no JSON or label. Use 2 to 4 natural sentences: acknowledge the specific new information, explain one useful inference or show how it changes your understanding, then—only if materially necessary—ask exactly one focused question. Never recite a checklist, announce processing, or ask the client to repeat facts present in a document. Use all attached evidence first. Distinguish allegations from facts and interpret dates relative to today. If enough is known for matching, say so naturally and ask no question.`,
     prompt: context,
   });
-  const stateResult = streamText({
+  const createStateResult = () => streamText({
     model: google("gemini-3.5-flash"),
     providerOptions: { google: { thinkingConfig: { thinkingLevel: "low" } } },
     output: Output.object({ schema: caseStateSchema }),
@@ -77,19 +77,17 @@ Use the full document evidence before marking anything missing. Identify the pre
       controller.enqueue(event("trace", { generationId, stage: "understanding", label: locale === "fr" ? "Lecture de votre message" : "Reading your message" }));
       try {
         let reply = "";
-        const replyTask = (async () => {
-          for await (const delta of replyResult.textStream) {
-            if (!firstOutputAt) firstOutputAt = Date.now();
-            reply += delta;
-            controller.enqueue(event("text-delta", { generationId, delta, text: reply }));
-          }
-          controller.enqueue(event("trace", { generationId, stage: "structuring", label: locale === "fr" ? "Mise à jour de la synthèse" : "Updating the case summary" }));
-        })();
-        const stateTask = (async () => {
-          for await (const partial of stateResult.partialOutputStream)
-            controller.enqueue(event("partial", { generationId, intake: partial }));
-        })();
-        await Promise.all([replyTask, stateTask]);
+        // Prioritise the visible conversation on free-tier quotas. Starting the
+        // structured call at the same time can make Google queue both requests.
+        for await (const delta of replyResult.textStream) {
+          if (!firstOutputAt) firstOutputAt = Date.now();
+          reply += delta;
+          controller.enqueue(event("text-delta", { generationId, delta, text: reply }));
+        }
+        controller.enqueue(event("trace", { generationId, stage: "structuring", label: locale === "fr" ? "Mise à jour de la synthèse" : "Updating the case summary" }));
+        const stateResult = createStateResult();
+        for await (const partial of stateResult.partialOutputStream)
+          controller.enqueue(event("partial", { generationId, intake: partial }));
         const [state, stateUsage, replyUsage] = await Promise.all([stateResult.output, stateResult.usage, replyResult.usage]);
         const question = finalQuestion(reply);
         const output = {
