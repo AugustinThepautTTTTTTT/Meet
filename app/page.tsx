@@ -1641,7 +1641,7 @@ function ChatIntake({
                 <div className="ai-generation-trace" role="status">
                   <span className="streaming-dot" />
                   <span>{aiActivity.label}</span>
-                  <small>Gemini 3.5 Flash · {traceSeconds}s · streaming</small>
+                  <small>Gemini 3.5 Flash-Lite · {traceSeconds}s · streaming</small>
                 </div>
               ) : aiActivity.trace ? (
                 <details className="ai-generation-trace complete">
