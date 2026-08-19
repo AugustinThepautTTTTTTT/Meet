@@ -86,6 +86,18 @@ type CalendarSettings = {
   weekly_hours: Record<string, [string, string]>;
   enabled: boolean;
 };
+
+function inquiryStatusLabel(status: Inquiry["status"]) {
+  return ({
+    pending: "À étudier",
+    clarification_requested: "Précision demandée",
+    payment_pending: "Validée · paiement en attente",
+    confirmed: "Consultation confirmée",
+    completed: "Consultation terminée",
+    accepted: "Acceptée",
+    declined: "Refusée",
+  } as Record<Inquiry["status"], string>)[status];
+}
 const defaultCalendar: CalendarSettings = {
   provider: "google",
   ical_url: "",
@@ -380,13 +392,13 @@ export default function Dashboard() {
       message:
         nextStatus === "accepted"
           ? data.inquiry?.status === "payment_pending"
-            ? "Request approved. The client can now pay to confirm the consultation."
-            : "Request approved and consultation confirmed."
+            ? "Demande validée. Le client peut maintenant payer pour confirmer la consultation."
+            : "Demande validée et consultation confirmée."
           : nextStatus === "declined"
-            ? "Request declined. The client can return to their dashboard."
+            ? "Demande refusée. Le client en retrouvera le statut dans son espace."
             : nextStatus === "completed"
-              ? "Consultation marked as completed."
-              : "Clarification requested from the client.",
+              ? "Consultation marquée comme terminée."
+              : "Demande de précision envoyée au client.",
     });
   }
 
@@ -976,7 +988,7 @@ function CalendarAgenda({
                   >
                     <small>{inquiry.meeting_time}</small>
                     <strong>{inquiry.client_name}</strong>
-                    <span>{inquiry.status === "pending" ? "Review request" : inquiry.status === "payment_pending" ? "Awaiting payment" : inquiry.status.replaceAll("_", " ")}</span>
+                    <span>{inquiryStatusLabel(inquiry.status)}</span>
                   </button>
                 ))}
                 {!busy.length && !meetings.length ? (
@@ -997,7 +1009,7 @@ function CalendarAgenda({
           </button>
           <div>
             <span className={`inquiry-status ${selected.status}`}>
-              {selected.status.replace("_", " ")}
+              {inquiryStatusLabel(selected.status)}
             </span>
             <h3>
               {selected.client_name} · {selected.brief.practice}
@@ -1013,7 +1025,7 @@ function CalendarAgenda({
                 className="decline-button"
                 onClick={() => void onRespond(selected.id, "declined")}
               >
-                Decline
+                Refuser
               </button>
               <button
                 className="primary-button compact"
@@ -1022,7 +1034,7 @@ function CalendarAgenda({
                   setSelected({ ...selected, status: selected.payment_amount_cents ? "payment_pending" : "confirmed" });
                 }}
               >
-                Accept meeting <span>→</span>
+                Valider la demande <span>→</span>
               </button>
             </div>
           ) : null}
@@ -1294,10 +1306,10 @@ function InquiryInbox({
     return (
       <div className="inquiry-empty">
         <span>✓</span>
-        <h2>Your inquiry inbox is clear.</h2>
+        <h2>Aucune demande à traiter.</h2>
         <p>
-          New clients matched to your practice will arrive here with a
-          structured case brief and proposed meeting time.
+          Les nouvelles demandes apparaîtront ici avec une synthèse structurée
+          et un créneau proposé.
         </p>
       </div>
     );
@@ -1306,8 +1318,8 @@ function InquiryInbox({
     <div className="inquiry-workspace">
       <aside className="inquiry-list">
         <div>
-          <p className="section-kicker">Client inquiries</p>
-          <small>{inquiries.length} total</small>
+          <p className="section-kicker">Demandes clients</p>
+          <small>{inquiries.length} au total</small>
         </div>
         {inquiries.map((item) => (
           <button
@@ -1319,7 +1331,7 @@ function InquiryInbox({
             }}
           >
             <span className={`inquiry-status ${item.status}`}>
-              {item.status.replace("_", " ")}
+              {inquiryStatusLabel(item.status)}
             </span>
             <strong>{item.client_name}</strong>
             <small>
@@ -1331,8 +1343,8 @@ function InquiryInbox({
       <section className="case-brief-panel">
         <header>
           <div>
-            <p className="section-kicker">Case brief</p>
-            <h2>{selected.brief.practice} matter</h2>
+            <p className="section-kicker">Synthèse du dossier</p>
+            <h2>{selected.brief.practice}</h2>
             <p>
               {selected.client_name} · {selected.client_email}
             </p>
@@ -1344,7 +1356,7 @@ function InquiryInbox({
           </span>
         </header>
         <div className="brief-summary">
-          <small>What happened</small>
+          <small>Situation</small>
           {selected.brief.dispute ? (
             <strong>{selected.brief.dispute}</strong>
           ) : null}
@@ -1352,7 +1364,7 @@ function InquiryInbox({
         </div>
         {selected.brief.conversation?.length ? (
           <div className="lawyer-conversation">
-            <small>Full Meet conversation</small>
+            <small>Conversation complète avec Meet</small>
             {selected.brief.conversation.map((message, index) => (
               <div className={message.role} key={`${message.role}-${index}`}>
                 <strong>
@@ -1365,23 +1377,23 @@ function InquiryInbox({
         ) : null}
         <div className="brief-facts">
           <div>
-            <small>Jurisdiction</small>
+            <small>Juridiction</small>
             <strong>{selected.brief.jurisdiction}</strong>
           </div>
           <div>
-            <small>Deadline</small>
+            <small>Échéance</small>
             <strong>{selected.brief.deadline}</strong>
           </div>
           <div>
-            <small>Desired outcome</small>
+            <small>Objectif du client</small>
             <strong>{selected.brief.desiredOutcome}</strong>
           </div>
           <div>
-            <small>Meeting</small>
+            <small>Rendez-vous</small>
             <strong>{selected.meeting_time}</strong>
           </div>
           <div>
-            <small>Language</small>
+            <small>Langue</small>
             <strong>{selected.brief.language}</strong>
           </div>
           <div>
@@ -1391,11 +1403,11 @@ function InquiryInbox({
         </div>
         <div className="brief-lists">
           <div>
-            <small>Conflict-check names</small>
+            <small>Parties concernées</small>
             <p>{selected.brief.parties}</p>
           </div>
           <div>
-            <small>Still to clarify</small>
+            <small>Points restant à préciser</small>
             <ul>
               {(selected.brief.missingInformation || []).map((item) => (
                 <li key={item}>{item}</li>
@@ -1406,12 +1418,12 @@ function InquiryInbox({
         {selected.status === "pending" || selected.status === "clarification_requested" ? (
           <div className="inquiry-response">
             <label>
-              Optional note
+              Note facultative
               <textarea
                 rows={3}
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
-                placeholder="Ask one focused question or add a note for the client."
+                placeholder="Posez une question précise ou ajoutez une note au client."
               />
             </label>
             <div>
@@ -1419,7 +1431,7 @@ function InquiryInbox({
                 className="decline-button"
                 onClick={() => void onRespond(selected.id, "declined", note)}
               >
-                Decline
+                Refuser
               </button>
               <button
                 className="card-button"
@@ -1427,26 +1439,26 @@ function InquiryInbox({
                   void onRespond(selected.id, "clarification_requested", note)
                 }
               >
-                Ask for clarification
+                Demander une précision
               </button>
               <button
                 className="primary-button compact"
                 onClick={() => void onRespond(selected.id, "accepted", note)}
               >
-                Approve request <span>→</span>
+                Valider la demande <span>→</span>
               </button>
             </div>
           </div>
         ) : (
           <div className="response-complete">
             <strong>
-              {selected.status === "payment_pending" ? "Approved · awaiting client payment" : selected.status === "confirmed" ? "Consultation confirmed" : selected.status === "completed" ? "Consultation completed" : `Response recorded: ${selected.status.replaceAll("_", " ")}`}
+              {inquiryStatusLabel(selected.status)}
             </strong>
             {selected.lawyer_note ? <p>{selected.lawyer_note}</p> : null}
           </div>
         )}
         <Link className="matter-open-link" href={`/matters/${selected.id}`}>
-          Open request dashboard <span>→</span>
+          Ouvrir le dossier partagé <span>→</span>
         </Link>
       </section>
     </div>
