@@ -38,8 +38,8 @@ type ClientCase = {
 const statusCopy: Record<string, { label: string; title: string; detail: string }> = {
   payment_pending: {
     label: "Payment required",
-    title: "Complete payment to send your request",
-    detail: "The lawyer cannot see your details or brief until Stripe confirms payment.",
+    title: "Pay to confirm the approved meeting",
+    detail: "The lawyer approved your request. Secure payment is the final step before confirmation.",
   },
   meeting_requested: {
     label: "Awaiting lawyer",
@@ -50,6 +50,11 @@ const statusCopy: Record<string, { label: string; title: string; detail: string 
     label: "Meeting confirmed",
     title: "Your consultation is confirmed",
     detail: "Your calendar invitation and meeting details are ready below.",
+  },
+  completed: {
+    label: "Completed",
+    title: "Your consultation was completed",
+    detail: "The shared workspace remains available for files, messages and follow-up tasks.",
   },
   clarification_requested: {
     label: "Action needed",
@@ -84,6 +89,13 @@ function caseStatus(item: ClientCase) {
   };
 }
 
+function caseStage(status: string) {
+  if (status === "completed") return 4;
+  if (status === "confirmed") return 3;
+  if (status === "payment_pending") return 2;
+  return 1;
+}
+
 export default function ClientAccount() {
   const [loading, setLoading] = useState(true);
   const [account, setAccount] = useState<{
@@ -109,9 +121,9 @@ export default function ClientAccount() {
     const payment = new URLSearchParams(window.location.search).get("payment");
     const timer = window.setTimeout(() => {
       if (payment === "success")
-        setPaymentNotice("Payment received. Your request is now being sent to the lawyer.");
+        setPaymentNotice("Payment received. Your consultation is being confirmed.");
       if (payment === "cancelled")
-        setPaymentNotice("Payment was cancelled. Your meeting request has not been sent.");
+        setPaymentNotice("Payment was cancelled. The lawyer’s approval remains valid in your workspace.");
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
@@ -250,6 +262,7 @@ export default function ClientAccount() {
         {cases.length ? (
           cases.map((item) => {
             const status = caseStatus(item);
+            const stage = caseStage(item.status);
             return (
             <article className={`client-case-card ${item.status}`} key={item.id}>
               <div className="client-case-main">
@@ -259,21 +272,13 @@ export default function ClientAccount() {
                 <h2>{item.brief.practice || "Legal request"}</h2>
                 <p>{item.brief.summary}</p>
                 <div className={`client-case-progress ${item.status}`}>
-                  <span className={item.status === "payment_pending" ? "current" : "done"}>
-                    {item.status === "payment_pending" ? "Payment required" : "Request sent"}
-                  </span>
+                  <span className="done">Request sent</span>
                   <i />
-                  <span
-                    className={
-                      item.status === "meeting_requested" ? "current" : item.status === "payment_pending" ? "" : "done"
-                    }
-                  >
-                    Lawyer review
-                  </span>
+                  <span className={stage > 1 ? "done" : "current"}>Lawyer approval</span>
                   <i />
-                  <span className={item.status === "confirmed" ? "done" : ""}>
-                    Meeting confirmed
-                  </span>
+                  <span className={stage > 2 ? "done" : stage === 2 ? "current" : ""}>{item.payment_status === "not_required" ? "No payment" : "Payment"}</span>
+                  <i />
+                  <span className={stage > 3 ? "done" : stage === 3 ? "current" : ""}>Consultation</span>
                 </div>
               </div>
               <aside className="client-case-next">
@@ -308,7 +313,7 @@ export default function ClientAccount() {
               <div className="client-case-actions">
                 {item.matter_id ? (
                   <Link className="primary-button compact" href={`/matters/${item.matter_id}`}>
-                    Open shared workspace <span>→</span>
+                    Open request dashboard <span>→</span>
                   </Link>
                 ) : null}
                 {item.status === "payment_pending" && item.stripe_checkout_url ? (

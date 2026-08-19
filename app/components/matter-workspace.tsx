@@ -13,6 +13,12 @@ type MatterData = {
     clientName: string;
     meetingTime: string;
     meetingStart?: string;
+    meetingUrl?: string;
+    paymentStatus?: string;
+    paymentAmountCents?: number;
+    paymentCurrency?: string;
+    checkoutUrl?: string;
+    lawyerNote?: string;
     brief: {
       practice?: string;
       summary?: string;
@@ -20,6 +26,8 @@ type MatterData = {
       urgency?: string;
       deadline?: string;
       desiredOutcome?: string;
+      keyFacts?: string[];
+      missingInformation?: string[];
     };
   };
   messages: Array<{ id: string; author_role: string; author_name: string; body: string; created_at: string }>;
@@ -38,6 +46,32 @@ function fileSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+const workflowSteps = ["Request", "Approval", "Payment", "Consultation"];
+
+function workflowPosition(status: string) {
+  if (status === "completed") return 4;
+  if (status === "confirmed") return 3;
+  if (status === "payment_pending") return 2;
+  if (status === "declined") return 0;
+  return 1;
+}
+
+function statusLabel(status: string) {
+  return ({
+    pending: "Awaiting lawyer review",
+    clarification_requested: "Information requested",
+    payment_pending: "Approved · payment required",
+    confirmed: "Consultation confirmed",
+    completed: "Consultation completed",
+    declined: "Request declined",
+  } as Record<string, string>)[status] || status.replaceAll("_", " ");
+}
+
+function money(amount?: number, currency = "EUR") {
+  if (!amount) return "No payment required";
+  return new Intl.NumberFormat("en", { style: "currency", currency }).format(amount / 100);
+}
+
 export default function MatterWorkspace({ matterId }: { matterId: string }) {
   const [data, setData] = useState<MatterData | null>(null);
   const [tab, setTab] = useState<"overview" | "messages" | "files" | "tasks">("overview");
@@ -45,6 +79,8 @@ export default function MatterWorkspace({ matterId }: { matterId: string }) {
   const [task, setTask] = useState({ title: "", assignedTo: "client", dueDate: "" });
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [statusNote, setStatusNote] = useState("");
+  const [paymentNotice, setPaymentNotice] = useState("");
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/matters/${matterId}`);
@@ -59,6 +95,37 @@ export default function MatterWorkspace({ matterId }: { matterId: string }) {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
+
+  useEffect(() => {
+    const payment = new URLSearchParams(window.location.search).get("payment");
+    if (!payment) return;
+    const noticeTimer = window.setTimeout(() => {
+      setPaymentNotice(payment === "success" ? "Payment received. We are confirming the consultation." : "Payment was cancelled. Your approved request is still here.");
+    }, 0);
+    if (payment === "success") {
+      const first = window.setTimeout(() => void load(), 1800);
+      const second = window.setTimeout(() => void load(), 4500);
+      return () => { window.clearTimeout(noticeTimer); window.clearTimeout(first); window.clearTimeout(second); };
+    }
+    return () => window.clearTimeout(noticeTimer);
+  }, [load]);
+
+  async function updateStatus(status: "accepted" | "declined" | "clarification_requested" | "completed") {
+    setBusy("status");
+    setError("");
+    const response = await fetch(`/api/account/inquiries/${matterId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, note: statusNote }),
+    });
+    const result = await response.json();
+    if (!response.ok) setError(result.error || "The request could not be updated.");
+    else {
+      setStatusNote("");
+      await load();
+    }
+    setBusy("");
+  }
 
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
@@ -136,6 +203,8 @@ export default function MatterWorkspace({ matterId }: { matterId: string }) {
 
   const otherParty = data.actor.role === "client" ? data.matter.lawyerName : data.matter.clientName;
   const openTasks = data.tasks.filter((item) => item.status === "open").length;
+  const position = workflowPosition(data.matter.status);
+  const paymentRequired = data.matter.paymentStatus === "unpaid" || data.matter.paymentStatus === "paid";
   return (
     <main className="matter-shell">
       <header className="matter-topbar">
@@ -144,17 +213,65 @@ export default function MatterWorkspace({ matterId }: { matterId: string }) {
         </Link>
         <div><span>Shared with {otherParty}</span><Link href={data.actor.role === "lawyer" ? "/lawyer/dashboard" : "/client/account"}>Back to dashboard</Link></div>
       </header>
-      <section className="matter-hero">
+      {paymentNotice ? <div className="matter-payment-notice" role="status">{paymentNotice}</div> : null}
+      <section className="matter-hero matter-hero-compact">
         <div>
-          <p className="section-kicker">Shared legal matter</p>
+          <p className="section-kicker">One shared request</p>
           <h1>{data.matter.brief.practice || "Legal matter"}</h1>
           <p>{data.matter.brief.summary}</p>
         </div>
         <aside>
-          <span className={`client-case-status ${data.matter.status}`}>{data.matter.status.replaceAll("_", " ")}</span>
+          <span className={`client-case-status ${data.matter.status}`}>{statusLabel(data.matter.status)}</span>
           <strong>{data.matter.meetingTime || "Meeting not scheduled"}</strong>
           <small>{data.matter.brief.jurisdiction || "Jurisdiction to confirm"}</small>
         </aside>
+      </section>
+      <section className="matter-workflow" aria-label="Request progress">
+        {workflowSteps.map((step, index) => {
+          const stepNumber = index + 1;
+          const paymentSkipped = step === "Payment" && !paymentRequired;
+          return <div className={stepNumber < position || data.matter.status === "completed" || paymentSkipped && position >= 3 ? "done" : stepNumber === position ? "current" : ""} key={step}>
+            <span>{stepNumber < position || data.matter.status === "completed" || paymentSkipped && position >= 3 ? "✓" : stepNumber}</span>
+            <strong>{paymentSkipped ? "Payment not required" : step}</strong>
+          </div>;
+        })}
+      </section>
+      <section className="matter-focus-grid">
+        <article className="matter-next-action">
+          <p className="section-kicker">Next step</p>
+          {data.matter.status === "pending" ? <>
+            <h2>{data.actor.role === "lawyer" ? "Review and respond to this request" : "Waiting for the lawyer’s decision"}</h2>
+            <p>{data.actor.role === "lawyer" ? "The proposed time is held until you approve or decline it." : `${data.matter.lawyerName} has received the complete brief and proposed time.`}</p>
+            {data.actor.role === "lawyer" ? <div className="matter-lawyer-decision"><textarea value={statusNote} onChange={(event) => setStatusNote(event.target.value)} placeholder="Optional note, or write a focused clarification question" rows={3} /><div><button className="decline-button" disabled={busy === "status"} onClick={() => void updateStatus("declined")}>Decline</button><button className="card-button" disabled={busy === "status" || !statusNote.trim()} onClick={() => void updateStatus("clarification_requested")}>Ask a question</button><button className="primary-button compact" disabled={busy === "status"} onClick={() => void updateStatus("accepted")}>Approve request <span>→</span></button></div></div> : null}
+          </> : null}
+          {data.matter.status === "clarification_requested" ? <>
+            <h2>{data.actor.role === "client" ? "The lawyer needs one clarification" : "Waiting for the client’s reply"}</h2>
+            <p>{data.matter.lawyerNote || "Open messages to continue the discussion without losing the case context."}</p>
+            <button className="card-button" onClick={() => setTab("messages")}>Open messages</button>
+            {data.actor.role === "lawyer" ? <button className="primary-button compact" disabled={busy === "status"} onClick={() => void updateStatus("accepted")}>Approve now <span>→</span></button> : null}
+          </> : null}
+          {data.matter.status === "payment_pending" ? <>
+            <h2>{data.actor.role === "client" ? "Pay to confirm the consultation" : "Waiting for client payment"}</h2>
+            <p>The lawyer approved the request. The meeting becomes final only after the secure payment is confirmed.</p>
+            <strong className="matter-payment-amount">{money(data.matter.paymentAmountCents, data.matter.paymentCurrency)}</strong>
+            {data.actor.role === "client" && data.matter.checkoutUrl ? <a className="primary-button compact" href={data.matter.checkoutUrl}>Pay securely with Stripe <span>→</span></a> : null}
+          </> : null}
+          {data.matter.status === "confirmed" ? <>
+            <h2>Your consultation is confirmed</h2>
+            <p>The brief, documents and preparation tasks remain attached to this workspace.</p>
+            {data.matter.meetingUrl ? <a className="primary-button compact" href={data.matter.meetingUrl} target="_blank" rel="noreferrer">Join meeting <span>↗</span></a> : null}
+            {data.actor.role === "lawyer" ? <button className="card-button" disabled={busy === "status"} onClick={() => void updateStatus("completed")}>Mark consultation completed</button> : null}
+          </> : null}
+          {data.matter.status === "completed" ? <><h2>Consultation completed</h2><p>This workspace remains available for the shared files, decisions and next steps.</p></> : null}
+          {data.matter.status === "declined" ? <><h2>This request was declined</h2><p>The brief and files remain available while the client chooses another lawyer.</p></> : null}
+        </article>
+        <article className="matter-intelligence">
+          <div><p className="section-kicker">Case intelligence</p><span>Live</span></div>
+          <h2>{data.matter.brief.desiredOutcome || "A clear first consultation"}</h2>
+          <p>{data.matter.brief.summary}</p>
+          {data.matter.brief.keyFacts?.length ? <ul>{data.matter.brief.keyFacts.slice(0, 3).map((fact) => <li key={fact}>{fact}</li>)}</ul> : null}
+          <small>Meet keeps the brief, documents, messages and actions aligned in this request.</small>
+        </article>
       </section>
       <nav className="matter-tabs" aria-label="Matter workspace">
         {(["overview", "messages", "files", "tasks"] as const).map((item) => (

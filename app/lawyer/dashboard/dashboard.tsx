@@ -50,7 +50,10 @@ type Inquiry = {
   meeting_start?: string;
   meeting_uid?: string;
   invite_sent_at?: string;
-  status: "pending" | "accepted" | "declined" | "clarification_requested";
+  status: "pending" | "accepted" | "declined" | "clarification_requested" | "payment_pending" | "confirmed" | "completed";
+  payment_status?: "unpaid" | "paid" | "not_required";
+  payment_amount_cents?: number;
+  payment_currency?: string;
   lawyer_note: string;
   created_at: string;
   brief: {
@@ -376,14 +379,14 @@ export default function Dashboard() {
       kind: "success",
       message:
         nextStatus === "accepted"
-          ? data.invitation?.sent
-            ? "Meeting accepted and calendar invitations sent to both participants."
-            : `Meeting accepted and added to Meet. ${data.invitation?.reason || "Email invitations are pending configuration."}`
+          ? data.inquiry?.status === "payment_pending"
+            ? "Request approved. The client can now pay to confirm the consultation."
+            : "Request approved and consultation confirmed."
           : nextStatus === "declined"
-            ? data.fallback
-              ? `Inquiry declined. Meet automatically routed it to ${data.fallback.lawyerName}.`
-              : "Inquiry declined. No additional available match was found."
-            : "Clarification requested from the client.",
+            ? "Request declined. The client can return to their dashboard."
+            : nextStatus === "completed"
+              ? "Consultation marked as completed."
+              : "Clarification requested from the client.",
     });
   }
 
@@ -434,7 +437,7 @@ export default function Dashboard() {
           >
             Inquiries{" "}
             <span>
-              {inquiries.filter((item) => item.status === "pending").length}
+              {inquiries.filter((item) => item.status === "pending" || item.status === "clarification_requested").length}
             </span>
           </button>
           <button
@@ -973,11 +976,7 @@ function CalendarAgenda({
                   >
                     <small>{inquiry.meeting_time}</small>
                     <strong>{inquiry.client_name}</strong>
-                    <span>
-                      {inquiry.status === "pending"
-                        ? "Review proposal"
-                        : inquiry.status.replace("_", " ")}
-                    </span>
+                    <span>{inquiry.status === "pending" ? "Review request" : inquiry.status === "payment_pending" ? "Awaiting payment" : inquiry.status.replaceAll("_", " ")}</span>
                   </button>
                 ))}
                 {!busy.length && !meetings.length ? (
@@ -1020,7 +1019,7 @@ function CalendarAgenda({
                 className="primary-button compact"
                 onClick={async () => {
                   await onRespond(selected.id, "accepted");
-                  setSelected({ ...selected, status: "accepted" });
+                  setSelected({ ...selected, status: selected.payment_amount_cents ? "payment_pending" : "confirmed" });
                 }}
               >
                 Accept meeting <span>→</span>
@@ -1404,7 +1403,7 @@ function InquiryInbox({
             </ul>
           </div>
         </div>
-        {selected.status === "pending" ? (
+        {selected.status === "pending" || selected.status === "clarification_requested" ? (
           <div className="inquiry-response">
             <label>
               Optional note
@@ -1434,20 +1433,20 @@ function InquiryInbox({
                 className="primary-button compact"
                 onClick={() => void onRespond(selected.id, "accepted", note)}
               >
-                Accept meeting <span>→</span>
+                Approve request <span>→</span>
               </button>
             </div>
           </div>
         ) : (
           <div className="response-complete">
             <strong>
-              Response recorded: {selected.status.replace("_", " ")}
+              {selected.status === "payment_pending" ? "Approved · awaiting client payment" : selected.status === "confirmed" ? "Consultation confirmed" : selected.status === "completed" ? "Consultation completed" : `Response recorded: ${selected.status.replaceAll("_", " ")}`}
             </strong>
             {selected.lawyer_note ? <p>{selected.lawyer_note}</p> : null}
           </div>
         )}
         <Link className="matter-open-link" href={`/matters/${selected.id}`}>
-          Open shared matter workspace <span>→</span>
+          Open request dashboard <span>→</span>
         </Link>
       </section>
     </div>

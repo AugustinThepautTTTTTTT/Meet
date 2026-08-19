@@ -57,6 +57,47 @@ export async function sendRequestReceived({
   return { sent: true };
 }
 
+export async function sendPaymentRequired({
+  clientName,
+  clientEmail,
+  lawyerName,
+  meetingTime,
+  amount,
+  currency,
+  checkoutUrl,
+}: {
+  clientName: string;
+  clientEmail: string;
+  lawyerName: string;
+  meetingTime: string;
+  amount: number;
+  currency: string;
+  checkoutUrl: string;
+}) {
+  if (!process.env.RESEND_API_KEY)
+    return { sent: false, reason: "Email delivery is not configured." };
+  const formattedAmount = new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency,
+  }).format(amount / 100);
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: process.env.MEET_EMAIL_FROM || "Meet <onboarding@resend.dev>",
+      to: [clientEmail],
+      subject: `${lawyerName} approved your consultation request`,
+      html: `<h1>Your lawyer approved the request</h1><p>Hello ${escapeHtml(clientName)},</p><p>${escapeHtml(lawyerName)} approved your proposed consultation at ${escapeHtml(meetingTime)}.</p><p><strong>${escapeHtml(formattedAmount)}</strong> is now due to confirm the meeting.</p><p><a href="${escapeHtml(checkoutUrl)}">Pay securely and confirm the consultation</a></p><p>The request, brief and documents remain available in your private Meet dashboard.</p>`,
+    }),
+  });
+  if (!response.ok)
+    return { sent: false, reason: `Email provider returned ${response.status}.` };
+  return { sent: true };
+}
+
 export async function sendMeetingInvite({
   uid = randomUUID(),
   start,

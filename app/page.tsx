@@ -1311,8 +1311,12 @@ export default function Home() {
                 </p>
                 <div className="booking-next-steps">
                   <span>✓ Case brief delivered</span>
-                  <span>✓ Time held pending lawyer acceptance</span>
-                  <strong>Prepare while we confirm</strong>
+                  <span>✓ Preferred time sent for lawyer approval</span>
+                  <strong>What happens next</strong>
+                  <span>○ The lawyer reviews your complete brief</span>
+                  <span>○ You pay only after approval</span>
+                  <span>○ Payment confirms the consultation</span>
+                  <strong>Prepare your file</strong>
                   {preparationItems(brief?.practice).map((item) => (
                     <span key={item}>○ {item}</span>
                   ))}
@@ -1339,7 +1343,7 @@ export default function Home() {
                   <small>
                     {activeLawyer.firstConsultationFree
                       ? "No payment is required for this consultation."
-                      : "Secure test payment through Stripe. No real money is charged in sandbox mode."}
+                      : "You will pay securely only after the lawyer approves your request. No charge is made now."}
                   </small>
                 </div>
                 <div className="booking-calendar-heading">
@@ -1496,12 +1500,8 @@ export default function Home() {
                   disabled={contactStatus === "sending"}
                 >
                   {contactStatus === "sending"
-                    ? activeLawyer.firstConsultationFree
-                      ? "Requesting meeting…"
-                      : "Opening secure payment…"
-                    : activeLawyer.firstConsultationFree
-                      ? "Request this meeting"
-                      : "Continue to secure payment"}{" "}
+                    ? "Sending request…"
+                    : "Send request to lawyer"}{" "}
                   <span>→</span>
                 </button>
               </>

@@ -24,7 +24,7 @@ export async function GET() {
     cases.map(async (item) => {
       const [inquiry] = await lawyers`
         SELECT id FROM inquiries WHERE external_case_id=${item.id}
-          AND status<>'payment_pending' ORDER BY updated_at DESC LIMIT 1
+          ORDER BY updated_at DESC LIMIT 1
       `;
       return { ...item, matter_id: inquiry?.id || null };
     }),

@@ -98,8 +98,11 @@ function localise(root: ParentNode, locale: Locale) {
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>("fr");
   useEffect(() => {
-    const stored = localStorage.getItem("meet-locale");
-    if (stored === "en" || stored === "fr") setLocaleState(stored);
+    const timer = window.setTimeout(() => {
+      const stored = localStorage.getItem("meet-locale");
+      if (stored === "en" || stored === "fr") setLocaleState(stored);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
   useEffect(() => {
     document.documentElement.lang = locale;

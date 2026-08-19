@@ -158,8 +158,7 @@ export function ensureLawyerWorkflowSchema() {
         (inquiry_id, actor_role, actor_name, event_type, description)
         SELECT i.id, 'system', 'Meet', 'matter', 'Shared matter workspace opened'
         FROM inquiries i
-        WHERE i.status<>'payment_pending'
-          AND NOT EXISTS (
+        WHERE NOT EXISTS (
             SELECT 1 FROM matter_events e WHERE e.inquiry_id=i.id
           )`;
     })();

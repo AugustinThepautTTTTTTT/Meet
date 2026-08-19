@@ -76,38 +76,6 @@ async function extractDocumentText(file: File, bytes: Uint8Array, deep: boolean)
   return cleanText(result.value).slice(0, characterLimit);
 }
 
-function fallbackAnalysis(filename: string, text: string) {
-  const lines = text.split("\n").map((line) => line.trim()).filter((line) => line.length > 12);
-  const dates = Array.from(
-    new Set(
-      text.match(/\b(?:\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})\b/gi) || [],
-    ),
-  ).slice(0, 6);
-  const parties = lines
-    .filter((line) => /^(employer|employee|client|landlord|tenant|company|authority|claimant|defendant|parties?)\s*:/i.test(line))
-    .map((line) => line.slice(0, 100))
-    .slice(0, 6);
-  return {
-    documentType: filename.split(".").pop()?.toUpperCase() || "Document",
-    summary: text
-      ? lines.slice(0, 3).join(" ").slice(0, 500)
-      : "No machine-readable text was found. The lawyer will still receive the original file.",
-    disputeObject: "Not reliably extracted",
-    claims: [],
-    procedure: "Not reliably extracted",
-    detailedAnalysis: text ? lines.slice(0, 12).join(" ").slice(0, 2000) : "",
-    chronology: dates,
-    legalIssues: [],
-    citedEvidence: [],
-    uncertainties: text ? ["Une analyse automatique approfondie n’a pas pu être générée."] : ["Aucun texte lisible n’a été extrait."],
-    relevantFacts: lines.slice(0, 6).map((line) => line.slice(0, 180)),
-    dates,
-    parties,
-    questionsRaised: text ? [] : ["Can the client briefly explain what this document shows?"],
-    extractionNotice: text ? "Machine-readable text extracted." : "This may be a scanned or image-only document.",
-  };
-}
-
 async function analyzeDocument(
   filename: string,
   text: string,

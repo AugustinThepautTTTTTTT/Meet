@@ -17,7 +17,7 @@ export async function authorizeMatter(inquiryId: string) {
     SELECT i.*, l.account_id AS lawyer_account_id, l.name AS lawyer_name,
       l.slug AS lawyer_slug
     FROM inquiries i JOIN lawyers l ON l.id=i.lawyer_id
-    WHERE i.id=${inquiryId} AND i.status<>'payment_pending'
+    WHERE i.id=${inquiryId}
   `;
   if (!inquiry) return null;
 

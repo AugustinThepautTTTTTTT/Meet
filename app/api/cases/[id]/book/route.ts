@@ -7,7 +7,6 @@ import {
   ensureLawyerWorkflowSchema,
 } from "@/lib/workflow-schema";
 import { sendRequestReceived } from "@/lib/meeting-invite";
-import { getStripe } from "@/lib/stripe";
 
 export async function POST(
   request: Request,
@@ -67,12 +66,6 @@ export async function POST(
         { error: "This lawyer has not configured a valid consultation price." },
         { status: 409 },
       );
-    if (paymentRequired && !process.env.STRIPE_SECRET_KEY)
-      return NextResponse.json(
-        { error: "Secure test payment is still being connected. Please try again shortly." },
-        { status: 503 },
-      );
-
     const [existingClient] =
       await clients`SELECT id, name, password_hash FROM client_accounts WHERE email=${cleanEmail}`;
     let clientAccountId: string;
@@ -111,17 +104,16 @@ export async function POST(
       accountCreated = true;
     }
 
-    const pendingStatus = paymentRequired ? "payment_pending" : "pending";
     const [inquiry] = await lawyers`
       INSERT INTO inquiries (external_case_id, lawyer_id, client_name, client_email, brief, meeting_time, meeting_start,
         status, payment_status, payment_amount_cents, payment_currency)
       VALUES (${id}, ${lawyer.id}, ${effectiveClientName}, ${cleanEmail}, ${JSON.stringify(caseRecord.brief)}::jsonb,
-        ${meetingTime}, ${meetingStart ? new Date(meetingStart) : null}, ${pendingStatus},
+        ${meetingTime}, ${meetingStart ? new Date(meetingStart) : null}, 'pending',
         ${paymentRequired ? "unpaid" : "not_required"}, ${paymentRequired ? amountCents : null}, ${currency})
       ON CONFLICT (external_case_id, lawyer_id) DO UPDATE SET
         client_name=EXCLUDED.client_name, client_email=EXCLUDED.client_email,
         brief=EXCLUDED.brief, meeting_time=EXCLUDED.meeting_time, meeting_start=EXCLUDED.meeting_start,
-        status=${pendingStatus}, payment_status=${paymentRequired ? "unpaid" : "not_required"},
+        status='pending', payment_status=${paymentRequired ? "unpaid" : "not_required"},
         payment_amount_cents=${paymentRequired ? amountCents : null}, payment_currency=${currency}, updated_at=now()
       RETURNING id
     `;
@@ -147,56 +139,23 @@ export async function POST(
             AND description LIKE '%intake document%'
         )
       `;
+    await lawyers`
+      INSERT INTO matter_events (inquiry_id,actor_role,actor_name,event_type,description)
+      SELECT ${inquiry.id},'system','Meet','request','Request sent to the lawyer for review'
+      WHERE NOT EXISTS (
+        SELECT 1 FROM matter_events WHERE inquiry_id=${inquiry.id} AND event_type='request'
+      )
+    `;
     await clients`
       UPDATE cases SET client_account_id=${clientAccountId}, client_name=${effectiveClientName}, client_email=${cleanEmail},
         selected_lawyer_slug=${lawyerSlug}, selected_lawyer_name=${lawyer.name},
         meeting_time=${meetingTime}, meeting_start=${meetingStart ? new Date(meetingStart) : null},
-        status=${paymentRequired ? "payment_pending" : "meeting_requested"},
+        status='meeting_requested',
         payment_status=${paymentRequired ? "unpaid" : "not_required"},
         payment_amount_cents=${paymentRequired ? amountCents : null}, payment_currency=${currency}, updated_at=now()
       WHERE id=${id}
     `;
     await createClientSession(clientAccountId);
-    if (paymentRequired) {
-      const origin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
-      const session = await getStripe().checkout.sessions.create({
-        integration_identifier: "meet_checkout_kqmxpvra",
-        mode: "payment",
-        customer_email: cleanEmail,
-        client_reference_id: id,
-        line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: currency.toLowerCase(),
-              unit_amount: amountCents,
-              product_data: {
-                name: `First legal consultation with ${lawyer.name}`,
-                description: `${meetingTime} · booked through Meet`,
-              },
-            },
-          },
-        ],
-        metadata: {
-          caseId: id,
-          lawyerId: String(lawyer.id),
-          lawyerSlug: String(lawyerSlug),
-        },
-        success_url: `${origin}/client/account?payment=success`,
-        cancel_url: `${origin}/client/account?payment=cancelled`,
-      });
-      await Promise.all([
-        clients`UPDATE cases SET stripe_checkout_session_id=${session.id},
-          stripe_checkout_url=${session.url || ""}, updated_at=now() WHERE id=${id}`,
-        lawyers`UPDATE inquiries SET stripe_checkout_session_id=${session.id}, updated_at=now()
-          WHERE external_case_id=${id} AND lawyer_id=${lawyer.id}`,
-      ]);
-      return NextResponse.json({
-        checkoutUrl: session.url,
-        paymentRequired: true,
-        accountCreated,
-      });
-    }
     const email = await sendRequestReceived({
       clientName: effectiveClientName,
       clientEmail: cleanEmail,
@@ -212,7 +171,7 @@ export async function POST(
       },
       accountCreated,
       email,
-      paymentRequired: false,
+      paymentRequired,
     });
   } catch (error) {
     console.error("case_booking_failed", error);
