@@ -420,8 +420,8 @@ export default function Dashboard() {
       ) : null}
       <aside className="dashboard-nav">
         <Link className="brand" href="/">
-          <span className="brand-mark">M</span>
-          <span>meet</span>
+          <span className="brand-mark" aria-hidden="true" />
+          <span>repere</span>
         </Link>
         <div className="account-mini">
           <span>
@@ -1093,7 +1093,7 @@ function CalendarEditor({
         <p className="section-kicker">Calendar connection</p>
         <h2>Only show times when you are genuinely free.</h2>
         <p>
-          Meet reads your private iCalendar feed to remove busy periods. The
+          Repere lit votre flux iCalendar privé afin d’exclure les périodes occupées. Le
           feed address stays on the server and is never shown to clients.
         </p>
         <div className="provider-grid">
@@ -1364,11 +1364,11 @@ function InquiryInbox({
         </div>
         {selected.brief.conversation?.length ? (
           <div className="lawyer-conversation">
-            <small>Conversation complète avec Meet</small>
+            <small>Conversation complète avec Repere</small>
             {selected.brief.conversation.map((message, index) => (
               <div className={message.role} key={`${message.role}-${index}`}>
                 <strong>
-                  {message.role === "assistant" ? "Meet" : selected.client_name}
+                  {message.role === "assistant" ? "Repere" : selected.client_name}
                 </strong>
                 <p>{message.content}</p>
               </div>
@@ -1564,8 +1564,8 @@ function ProfileResearchAssistant({
       <div className="profile-research-heading">
         <div>
           <span className="ai-pill">AI profile researcher</span>
-          <h2>Let Meet prepare your first draft</h2>
-          <p>Meet searches public professional sources, resolves your identity and turns verified facts into editable profile fields.</p>
+          <h2>Laissez Repere préparer votre première version</h2>
+          <p>Repere consulte les sources professionnelles publiques et transforme les informations vérifiées en champs modifiables.</p>
         </div>
         <span className="research-step">00</span>
       </div>

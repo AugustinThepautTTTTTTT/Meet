@@ -43,10 +43,10 @@ export async function sendRequestReceived({
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: process.env.MEET_EMAIL_FROM || "Meet <onboarding@resend.dev>",
+      from: process.env.MEET_EMAIL_FROM || "Repere <onboarding@resend.dev>",
       to: [clientEmail],
       subject: `Your request to ${lawyerName} was received`,
-      html: `<h1>We received your request</h1><p>Hello ${escapeHtml(clientName)},</p><p>Your request to meet ${escapeHtml(lawyerName)} at ${escapeHtml(meetingTime)} has been submitted.</p><p><strong>Status:</strong> Waiting for the lawyer to review.</p><h2>Your case</h2><p>${escapeHtml(brief.summary)}</p><p>You can track this request from your private Meet client account.</p>`,
+      html: `<h1>Votre demande a bien été reçue</h1><p>Bonjour ${escapeHtml(clientName)},</p><p>Votre demande de rendez-vous avec ${escapeHtml(lawyerName)} pour le créneau ${escapeHtml(meetingTime)} a été transmise.</p><p><strong>Statut :</strong> en attente de validation par l’avocat.</p><h2>Votre dossier</h2><p>${escapeHtml(brief.summary)}</p><p>Vous pouvez suivre cette demande depuis votre espace client Repere.</p>`,
     }),
   });
   if (!response.ok)
@@ -87,10 +87,10 @@ export async function sendPaymentRequired({
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: process.env.MEET_EMAIL_FROM || "Meet <onboarding@resend.dev>",
+      from: process.env.MEET_EMAIL_FROM || "Repere <onboarding@resend.dev>",
       to: [clientEmail],
       subject: `${lawyerName} approved your consultation request`,
-      html: `<h1>Your lawyer approved the request</h1><p>Hello ${escapeHtml(clientName)},</p><p>${escapeHtml(lawyerName)} approved your proposed consultation at ${escapeHtml(meetingTime)}.</p><p><strong>${escapeHtml(formattedAmount)}</strong> is now due to confirm the meeting.</p><p><a href="${escapeHtml(checkoutUrl)}">Pay securely and confirm the consultation</a></p><p>The request, brief and documents remain available in your private Meet dashboard.</p>`,
+      html: `<h1>Votre demande a été acceptée</h1><p>Bonjour ${escapeHtml(clientName)},</p><p>${escapeHtml(lawyerName)} a accepté votre consultation au créneau ${escapeHtml(meetingTime)}.</p><p>Le règlement de <strong>${escapeHtml(formattedAmount)}</strong> est nécessaire pour confirmer le rendez-vous.</p><p><a href="${escapeHtml(checkoutUrl)}">Payer et confirmer la consultation</a></p><p>La demande, la synthèse et les documents restent disponibles dans votre espace Repere.</p>`,
     }),
   });
   if (!response.ok)
@@ -120,9 +120,9 @@ export async function sendMeetingInvite({
   const end = new Date(start.getTime() + durationMinutes * 60_000);
   const summary = `Legal consultation · ${clientName} and ${lawyerName}`;
   const notes = [
-    `Private Meet case brief`,
+    `Synthèse privée Repere`,
     `Practice: ${brief.practice || "Legal consultation"}`,
-    `Summary: ${brief.summary || "See the Meet dashboard"}`,
+    `Synthèse : ${brief.summary || "Consultez votre espace Repere"}`,
     `Jurisdiction: ${brief.jurisdiction || "Not confirmed"}`,
     `Desired outcome: ${brief.desiredOutcome || "Not specified"}`,
     `Parties: ${brief.parties || "Not provided"}`,
@@ -130,7 +130,7 @@ export async function sendMeetingInvite({
   const calendar = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Meet//Legal consultation//EN",
+    "PRODID:-//Repere//Consultation juridique//FR",
     "CALSCALE:GREGORIAN",
     "METHOD:REQUEST",
     "BEGIN:VEVENT",
@@ -159,14 +159,14 @@ export async function sendMeetingInvite({
       "Idempotency-Key": `meeting-invite-${uid}`,
     },
     body: JSON.stringify({
-      from: process.env.MEET_EMAIL_FROM || "Meet <onboarding@resend.dev>",
+      from: process.env.MEET_EMAIL_FROM || "Repere <onboarding@resend.dev>",
       to: [lawyerEmail, clientEmail],
       subject: summary,
       html: `<h1>Your consultation is confirmed</h1><p>${escapeHtml(
         lawyerName,
       )} and ${escapeHtml(clientName)}, this meeting has been added to your calendars.</p><h2>Private case brief</h2><p>${escapeHtml(
         brief.summary,
-      )}</p><p>Open Meet for the complete conversation and preparation notes.</p>`,
+      )}</p><p>Ouvrez Repere pour retrouver la conversation et les notes de préparation.</p>`,
       attachments: [
         {
           filename: "meet-consultation.ics",

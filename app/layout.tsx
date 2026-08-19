@@ -19,19 +19,19 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL || "meet.vercel.app"}`,
   ),
-  title: "Meet — Trouvez le bon avocat",
+  title: "Repere — Trouvez le bon avocat",
   description:
     "Décrivez votre situation juridique et rencontrez les avocats les plus adaptés.",
   openGraph: {
-    title: "Rencontrez le bon avocat.",
+    title: "Repere — Rencontrez le bon avocat.",
     description: "Un accompagnement juridique clair commence par la bonne mise en relation.",
-    images: [{ url: "/og.png", width: 1200, height: 630 }],
+    images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Rencontrez le bon avocat.",
+    title: "Repere — Rencontrez le bon avocat.",
     description: "Un accompagnement juridique clair commence par la bonne mise en relation.",
-    images: ["/og.png"],
+    images: ["/opengraph-image"],
   },
   icons: {
     icon: "/favicon.svg",

@@ -81,7 +81,7 @@ export function createCaseBrief(problem: string, practice: string): CaseBrief {
     language: "Français",
     meetingFormat: "Visioconférence",
     parties: "Non renseigné",
-    timeline: ["Le client a décrit sa situation à Meet"],
+    timeline: ["Le client a décrit sa situation à Repere"],
     missingInformation: [
       "Juridiction exacte",
       "Noms nécessaires à la vérification des conflits d’intérêts",

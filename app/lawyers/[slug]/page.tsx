@@ -19,8 +19,8 @@ export default async function LawyerPublicPage({
     <main className="profile-page">
       <header className="simple-header">
         <Link className="brand" href="/">
-          <span className="brand-mark">M</span>
-          <span>meet</span>
+          <span className="brand-mark" aria-hidden="true" />
+          <span>repere</span>
         </Link>
         <Link href="/">Find a lawyer</Link>
       </header>

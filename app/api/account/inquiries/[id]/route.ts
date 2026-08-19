@@ -70,7 +70,7 @@ export async function PATCH(
             unit_amount: Number(inquiry.payment_amount_cents),
             product_data: {
               name: `First legal consultation with ${inquiry.lawyer_name}`,
-              description: `${inquiry.meeting_time} · approved through Meet`,
+              description: `${inquiry.meeting_time} · validé via Repere`,
             },
           },
         }],

@@ -64,7 +64,7 @@ export async function POST(request: Request) {
         await recordMatterEvent(
           paidInquiry.id,
           "system",
-          "Meet",
+          "Repere",
           "payment",
           "Payment confirmed — the consultation is now booked",
         );

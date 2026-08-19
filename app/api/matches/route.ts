@@ -288,7 +288,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("lawyer_matching_failed", error);
     return NextResponse.json(
-      { error: "Meet could not rank lawyers right now." },
+      { error: "Repere n’a pas pu classer les avocats pour le moment." },
       { status: 500 },
     );
   }

@@ -185,7 +185,7 @@ export function fallbackIntake(
       ? "Employment termination appears inconsistent with the contractual notice period"
       : problem.trim().replace(/\s+/g, " "),
     summary: isTermination
-      ? `The client says their employer terminated the employment relationship despite a contractual three-month notice period. The matter appears connected to ${inferredJurisdiction === "Not confirmed" ? "a jurisdiction not yet confirmed" : inferredJurisdiction}. Meet is clarifying how the termination operates in practice and what outcome the client wants.`
+      ? `The client says their employer terminated the employment relationship despite a contractual three-month notice period. The matter appears connected to ${inferredJurisdiction === "Not confirmed" ? "a jurisdiction not yet confirmed" : inferredJurisdiction}. Repere is clarifying how the termination operates in practice and what outcome the client wants.`
       : problem.trim().replace(/\s+/g, " "),
     keyFacts: isTermination
       ? [

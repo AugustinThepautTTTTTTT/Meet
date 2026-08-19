@@ -85,7 +85,7 @@ function frenchFallback(intake: ReturnType<typeof fallbackIntake>) {
     ...intake,
     dispute: employment ? "Licenciement potentiellement incompatible avec le préavis contractuel" : intake.dispute,
     summary: employment
-      ? `Le client indique que son employeur a rompu le contrat de travail sans respecter le préavis contractuel. Le dossier est rattaché à ${intake.jurisdiction}. Meet précise les modalités de la rupture et le résultat recherché afin d’identifier un avocat en droit du travail adapté.`
+      ? `Le client indique que son employeur a rompu le contrat de travail sans respecter le préavis contractuel. Le dossier est rattaché à ${intake.jurisdiction}. Repere précise les modalités de la rupture et le résultat recherché afin d’identifier un avocat en droit du travail adapté.`
       : intake.summary,
     keyFacts: employment
       ? [
@@ -171,7 +171,7 @@ export async function POST(request: Request) {
       output: Output.object({ schema: intakeStateSchema }),
       maxOutputTokens: 1600,
       temperature: 0.1,
-      system: `You are Meet, an attentive legal-intake conversationalist specialised in the French legal market. Extract facts but never give legal advice or predict outcomes. Today is ${today}. ${locale === "fr" ? "Write every user-facing and structured text field in natural, clear French." : "Write every field in English, while applying French-market analysis when France is relevant."}
+      system: `You are Repere, an attentive legal-intake conversationalist specialised in the French legal market. Extract facts but never give legal advice or predict outcomes. Today is ${today}. ${locale === "fr" ? "Write every user-facing and structured text field in natural, clear French." : "Write every field in English, while applying French-market analysis when France is relevant."}
 
 FRENCH LEGAL ROUTING
 When the matter is connected to France, identify the precise substantive field where supported: droit du travail, famille, immobilier/copropriété, affaires/sociétés, commercial, pénal, étrangers, public/administratif, fiscal, social, propriété intellectuelle, numérique/données, responsabilité/préjudice corporel, or successions. Distinguish the judicial and administrative orders. Identify a likely court or procedure only when evidence supports it: tribunal judiciaire and its specialised judges, conseil de prud’hommes, tribunal de commerce, tribunal administratif, criminal court, appeal, enforcement, or alternative dispute resolution. Extract the geographic connection and likely competent court. territorialBar identifies a relevant French bar only when a court/location or verified credential supports it. Do not imply that a lawyer may advise only in their city: distinguish free choice, advice and pleading from territorial postulation where representation is required. Never infer bar membership from office location alone; mark it for verification. Keep legalDomain, courtOrProcedure, territorialBar and applicableLaw concise and express uncertainty honestly.
@@ -269,7 +269,7 @@ Update all structured fields in the background on every turn. The summary is a c
       });
     }
     return NextResponse.json(
-      { error: "Meet could not continue the intake." },
+      { error: "Repere n’a pas pu poursuivre l’analyse." },
       { status: 500 },
     );
   }

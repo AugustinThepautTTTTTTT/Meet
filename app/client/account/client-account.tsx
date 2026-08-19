@@ -63,7 +63,7 @@ const statusCopy: Record<string, { label: string; title: string; detail: string 
   },
   automatically_rematched: {
     label: "Nouvel avocat recherché",
-    title: "Meet actualise votre mise en relation",
+    title: "Repere actualise votre mise en relation",
     detail: "Votre synthèse est conservée pendant la recherche d’un autre avocat adapté.",
   },
   declined: {
@@ -166,8 +166,8 @@ export default function ClientAccount({ googleEnabled = false }: { googleEnabled
     return (
       <main className="client-account-shell client-login-shell">
         <Link className="brand" href="/">
-          <span className="brand-mark">M</span>
-          <span>meet</span>
+          <span className="brand-mark" aria-hidden="true" />
+          <span>repere</span>
         </Link>
         <section className="client-login-card">
           <p className="section-kicker">Espace client</p>
@@ -213,8 +213,8 @@ export default function ClientAccount({ googleEnabled = false }: { googleEnabled
     <main className="client-account-shell">
       <header className="client-account-header">
         <Link className="brand" href="/">
-          <span className="brand-mark">M</span>
-          <span>meet</span>
+          <span className="brand-mark" aria-hidden="true" />
+          <span>repere</span>
         </Link>
         <div>
           <span>{account.name}</span>
@@ -379,11 +379,11 @@ export default function ClientAccount({ googleEnabled = false }: { googleEnabled
                 ) : null}
                 {item.brief.conversation?.length ? (
                   <details className="client-conversation-details">
-                    <summary>Relire votre conversation avec Meet</summary>
+                    <summary>Relire votre conversation avec Repere</summary>
                     <div>
                       {item.brief.conversation.map((message, index) => (
                         <p className={message.role} key={`${message.role}-${index}`}>
-                          <span>{message.role === "client" ? "Vous" : "Meet"}</span>
+                          <span>{message.role === "client" ? "Vous" : "Repere"}</span>
                           {message.content}
                         </p>
                       ))}

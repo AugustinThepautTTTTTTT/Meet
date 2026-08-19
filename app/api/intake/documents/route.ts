@@ -192,7 +192,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     console.error(JSON.stringify({ level: "error", msg: "intake_document_upload_failed", route: "/api/intake/documents", detail }));
-    return NextResponse.json({ error: "Meet could not read this document." }, { status: 500 });
+    return NextResponse.json({ error: "Repere n’a pas pu lire ce document." }, { status: 500 });
   }
 }
 

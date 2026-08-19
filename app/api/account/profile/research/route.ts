@@ -125,7 +125,7 @@ export async function POST(request: Request) {
     });
     if (output.confidence === "low")
       return NextResponse.json(
-        { error: "Meet found multiple possible identities. Add your firm, city or official profile URL and retry.", identityNote: output.identityNote },
+        { error: "Repere a trouvé plusieurs identités possibles. Ajoutez votre cabinet, votre ville ou une URL professionnelle officielle.", identityNote: output.identityNote },
         { status: 422 },
       );
     const safeDraft = {
@@ -140,6 +140,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ draft: safeDraft, sources });
   } catch (error) {
     console.error("profile_research_failed", error);
-    return NextResponse.json({ error: "Meet could not prepare the profile research." }, { status: 500 });
+    return NextResponse.json({ error: "Repere n’a pas pu préparer la recherche de profil." }, { status: 500 });
   }
 }

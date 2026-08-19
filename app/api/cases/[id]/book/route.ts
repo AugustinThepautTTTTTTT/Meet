@@ -140,7 +140,7 @@ export async function POST(
     if (intakeDocuments.length)
       await lawyers`
         INSERT INTO matter_events (inquiry_id,actor_role,actor_name,event_type,description)
-        SELECT ${inquiry.id},'system','Meet','file',${`${intakeDocuments.length} intake document${intakeDocuments.length === 1 ? "" : "s"} attached to the matter`}
+        SELECT ${inquiry.id},'system','Repere','file',${`${intakeDocuments.length} intake document${intakeDocuments.length === 1 ? "" : "s"} attached to the matter`}
         WHERE NOT EXISTS (
           SELECT 1 FROM matter_events WHERE inquiry_id=${inquiry.id} AND event_type='file'
             AND description LIKE '%intake document%'
@@ -148,7 +148,7 @@ export async function POST(
       `;
     await lawyers`
       INSERT INTO matter_events (inquiry_id,actor_role,actor_name,event_type,description)
-      SELECT ${inquiry.id},'system','Meet','request','Request sent to the lawyer for review'
+      SELECT ${inquiry.id},'system','Repere','request','Request sent to the lawyer for review'
       WHERE NOT EXISTS (
         SELECT 1 FROM matter_events WHERE inquiry_id=${inquiry.id} AND event_type='request'
       )

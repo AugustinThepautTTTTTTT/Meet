@@ -5584,7 +5584,34 @@ footer div a {
   background: rgba(255, 255, 255, .94);
   border-bottom-color: #e7eaf0;
 }
-.brand-mark { background: #172033; border-radius: 8px; }
+.brand-mark {
+  position: relative;
+  overflow: hidden;
+  background: #172033;
+  border-radius: 9px;
+  color: transparent;
+  font-size: 0;
+}
+.brand-mark::before,
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  border-style: solid;
+  border-width: 0 0 2.5px 2.5px;
+  border-radius: 0 0 0 7px;
+}
+.brand-mark::before {
+  inset: 7px 6px 6px 7px;
+  border-color: #fff;
+}
+.brand-mark::after {
+  width: 8px;
+  height: 9px;
+  top: 7px;
+  right: 7px;
+  border-color: #6d8bf0;
+  transform: rotate(-90deg);
+}
 .nav-link.active { border-bottom-color: #3157d5; }
 .account-button { border-color: #d5dae3; box-shadow: none; }
 .hero::before { background: #eef2ff; }

@@ -37,8 +37,8 @@ export default function AccountForm({ googleEnabled = false }: { googleEnabled?:
     <main className="auth-shell">
       <section className="auth-story">
         <Link className="brand" href="/">
-          <span className="brand-mark">M</span>
-          <span>meet</span>
+          <span className="brand-mark" aria-hidden="true" />
+          <span>repere</span>
         </Link>
         <div>
           <p className="section-kicker">Lawyer workspace</p>
@@ -81,7 +81,7 @@ export default function AccountForm({ googleEnabled = false }: { googleEnabled?:
             </button>
           </div>
           <p className="section-kicker">
-            {mode === "register" ? "Join Meet as a lawyer" : "Welcome back"}
+            {mode === "register" ? "Rejoindre Repere en tant qu’avocat" : "Bon retour"}
           </p>
           <h2>
             {mode === "register"
@@ -145,7 +145,7 @@ export default function AccountForm({ googleEnabled = false }: { googleEnabled?:
             </button>
           </form>
           <Link className="back-home" href="/">
-            ← Back to Meet
+            ← Retour à Repere
           </Link>
         </div>
       </section>

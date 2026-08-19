@@ -214,7 +214,7 @@ export default function MatterWorkspace({ matterId }: { matterId: string }) {
   }
 
   if (error && !data)
-    return <main className="matter-shell"><div className="matter-error"><h1>Dossier indisponible</h1><p>{error}</p><Link href="/">Retour à Meet</Link></div></main>;
+    return <main className="matter-shell"><div className="matter-error"><h1>Dossier indisponible</h1><p>{error}</p><Link href="/">Retour à Repere</Link></div></main>;
   if (!data) return <main className="matter-shell"><p>Ouverture de votre espace sécurisé…</p></main>;
 
   const otherParty = data.actor.role === "client" ? data.matter.lawyerName : data.matter.clientName;
@@ -225,7 +225,7 @@ export default function MatterWorkspace({ matterId }: { matterId: string }) {
     <main className="matter-shell">
       <header className="matter-topbar">
         <Link className="brand" href={data.actor.role === "lawyer" ? "/lawyer/dashboard" : "/client/account"}>
-          <span className="brand-mark">M</span><span>meet</span>
+          <span className="brand-mark" aria-hidden="true" /><span>repere</span>
         </Link>
         <div><span>Partagé avec {otherParty}</span><Link href={data.actor.role === "lawyer" ? "/lawyer/dashboard" : "/client/account"}>Retour au tableau de bord</Link></div>
       </header>
@@ -286,7 +286,7 @@ export default function MatterWorkspace({ matterId }: { matterId: string }) {
           <h2>{data.matter.brief.desiredOutcome || "Préparer une première consultation utile"}</h2>
           <p>{data.matter.brief.summary}</p>
           {data.matter.brief.keyFacts?.length ? <ul>{data.matter.brief.keyFacts.slice(0, 3).map((fact) => <li key={fact}>{fact}</li>)}</ul> : null}
-          <small>Meet rassemble la synthèse, les documents, les messages et les actions de ce dossier.</small>
+          <small>Repere rassemble la synthèse, les documents, les messages et les actions de ce dossier.</small>
         </article>
       </section>
       <nav className="matter-tabs" aria-label="Contenu du dossier">

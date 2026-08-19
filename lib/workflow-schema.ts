@@ -156,7 +156,7 @@ export function ensureLawyerWorkflowSchema() {
         ON matter_events (inquiry_id, created_at DESC)`;
       await sql`INSERT INTO matter_events
         (inquiry_id, actor_role, actor_name, event_type, description)
-        SELECT i.id, 'system', 'Meet', 'matter', 'Shared matter workspace opened'
+        SELECT i.id, 'system', 'Repere', 'matter', 'Shared matter workspace opened'
         FROM inquiries i
         WHERE NOT EXISTS (
             SELECT 1 FROM matter_events e WHERE e.inquiry_id=i.id

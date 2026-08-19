@@ -773,7 +773,7 @@ export default function Home() {
         language: finalIntake.language || "English",
         meetingFormat: finalIntake.meetingFormat || "Video call",
         timeline: [
-          "Client described the situation through Meet",
+          "Client described the situation through Repere",
           `Intake completed in ${completedExchanges.length + 1} AI checks`,
         ],
         missingInformation: finalIntake.missingInformation,
@@ -995,10 +995,10 @@ export default function Home() {
             setLawyerStep("intro");
             setClientStep("describe");
           }}
-          aria-label="Meet home"
+          aria-label="Accueil Repere"
         >
-          <span className="brand-mark">M</span>
-          <span>meet</span>
+          <span className="brand-mark" aria-hidden="true" />
+          <span>repere</span>
         </button>
         <nav aria-label="Main navigation">
           <button
@@ -1044,19 +1044,19 @@ export default function Home() {
               <h1>
                 Tell us what happened.
                 <br />
-                Meet the right lawyer.
+                Repere vous présente le bon avocat.
               </h1>
               <p className="hero-copy">
                 Describe your situation in your own words. We’ll understand what
                 you need and introduce you to lawyers who fit.
               </p>
-              <div className="hero-confidence" aria-label="How Meet works">
+              <div className="hero-confidence" aria-label="Comment fonctionne Repere">
                 <span><b>1</b> Explain your situation</span>
                 <span><b>2</b> Review your matches</span>
                 <span><b>3</b> Book securely</span>
               </div>
               <p className="hero-disclaimer">
-                Meet helps you find independent lawyers. It does not provide legal advice.
+                Repere vous aide à trouver des avocats indépendants. Repere ne fournit pas de conseil juridique.
               </p>
             </div>
             <div className="hero-workspace">
@@ -1148,7 +1148,7 @@ export default function Home() {
                 </span>
                 <small>
                   {clientStep === "conversation"
-                    ? "Meet is understanding your situation"
+                    ? "Repere analyse votre situation"
                     : clientStep === "matches"
                       ? "Choose your lawyer"
                       : "Meeting requested"}
@@ -1207,8 +1207,8 @@ export default function Home() {
                       </h2>
                       <p className="match-explainer">
                         {locale === "fr"
-                          ? "Meet a comparé votre synthèse aux profils publiés en tenant compte de l’expertise, de la juridiction, de la langue et des disponibilités. "
-                          : "Meet compared your brief with published lawyer profiles, including expertise, jurisdiction, language and availability. "}
+                          ? "Repere a comparé votre synthèse aux profils publiés en tenant compte de l’expertise, de la juridiction, de la langue et des disponibilités. "
+                          : "Repere compared your brief with published lawyer profiles, including expertise, jurisdiction, language and availability. "}
                         {caseStatus === "saved"
                           ? locale === "fr" ? "Votre demande a été enregistrée de manière sécurisée." : "Your request has been saved securely."
                           : caseStatus === "saving"
@@ -1329,7 +1329,7 @@ export default function Home() {
               <>
                 <h2 id="contact-title">Choose your consultation</h2>
                 <p>
-                  Meet will send {activeLawyer.name.split(" ")[0]} your case
+                  Repere transmettra votre dossier à {activeLawyer.name.split(" ")[0]}
                   brief. Your details stay private until you request the
                   meeting.
                 </p>
@@ -1511,8 +1511,8 @@ export default function Home() {
       )}
       <footer>
         <span className="brand">
-          <span className="brand-mark">M</span>
-          <span>meet</span>
+          <span className="brand-mark" aria-hidden="true" />
+          <span>repere</span>
         </span>
         <p>Clear legal help starts with the right introduction.</p>
         <div>
@@ -1703,7 +1703,7 @@ function ChatIntake({
         )}
         {error ? (
           <div className="chat-error">
-            {locale === "fr" ? "Meet n’a pas pu terminer cette étape. Vos réponses sont conservées : vous pouvez réessayer." : "Meet couldn’t complete this step. Your answers are still here, so you can retry."}
+            {locale === "fr" ? "Repere n’a pas pu terminer cette étape. Vos réponses sont conservées : vous pouvez réessayer." : "Repere couldn’t complete this step. Your answers are still here, so you can retry."}
           </div>
         ) : null}
       </div>
@@ -1717,7 +1717,7 @@ function ChatIntake({
         </header>
         <h2>{intake?.dispute || (locale === "fr" ? "Compréhension de votre situation" : "Understanding your situation")}</h2>
         <p className="live-summary-copy">
-          {intake?.summary || (locale === "fr" ? "Au fil de l’échange, Meet organise ici les faits importants sans interrompre la conversation." : "As you talk, Meet will organise the important facts here without interrupting the conversation.")}
+          {intake?.summary || (locale === "fr" ? "Au fil de l’échange, Repere organise ici les faits importants sans interrompre la conversation." : "As you talk, Repere will organise the important facts here without interrupting the conversation.")}
         </p>
         {intake?.keyFacts?.length ? (
           <section>
@@ -1930,7 +1930,7 @@ function LawyerStudio({
             <strong>Share your practice details</strong>
             <small>Expertise, clients, approach and fees</small>
             <span>02</span>
-            <strong>Meet writes your first draft</strong>
+            <strong>Repere rédige votre première version</strong>
             <small>Professional copy in your own voice</small>
             <span>03</span>
             <strong>Edit and preview everything</strong>
@@ -2040,7 +2040,7 @@ function LawyerStudio({
       <StudioHeader
         step="1 of 2"
         title="Tell us about your practice"
-        subtitle="Add the essentials. Meet will turn them into a clear, client-friendly profile."
+        subtitle="Ajoutez l’essentiel. Repere le transformera en un profil clair pour vos clients."
       />
       <div className="prepare-card">
         <div className="form-section">
@@ -2126,7 +2126,7 @@ function LawyerStudio({
           <div>
             <strong>Draft my profile with AI</strong>
             <small>
-              Meet will create your introduction, structure and first post idea.
+              Repere créera votre présentation, sa structure et une première idée d’article.
             </small>
           </div>
           <b>→</b>
