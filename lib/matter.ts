@@ -63,3 +63,54 @@ export async function recordMatterEvent(
     VALUES (${inquiryId}, ${actorRole}, ${actorName}, ${eventType}, ${description})
   `;
 }
+
+export async function ensureMatterTask(
+  inquiryId: string,
+  taskKey: string,
+  title: string,
+  assignedTo: MatterRole,
+  createdBy: MatterRole = "lawyer",
+) {
+  const sql = getLawyerDb();
+  await sql`
+    INSERT INTO matter_tasks (inquiry_id,title,assigned_to,created_by,task_key)
+    VALUES (${inquiryId},${title},${assignedTo},${createdBy},${taskKey})
+    ON CONFLICT (inquiry_id,task_key) WHERE task_key<>'' DO NOTHING
+  `;
+}
+
+export async function completeMatterTask(inquiryId: string, taskKey: string) {
+  const sql = getLawyerDb();
+  await sql`
+    UPDATE matter_tasks SET status='done', completed_at=COALESCE(completed_at,now())
+    WHERE inquiry_id=${inquiryId} AND task_key=${taskKey} AND status='open'
+  `;
+}
+
+export async function reopenMatterTask(
+  inquiryId: string,
+  taskKey: string,
+  title: string,
+  assignedTo: MatterRole,
+  createdBy: MatterRole = "lawyer",
+) {
+  const sql = getLawyerDb();
+  await ensureMatterTask(inquiryId, taskKey, title, assignedTo, createdBy);
+  await sql`
+    UPDATE matter_tasks
+    SET title=${title}, assigned_to=${assignedTo}, created_by=${createdBy},
+      status='open', completed_at=NULL
+    WHERE inquiry_id=${inquiryId} AND task_key=${taskKey}
+  `;
+}
+
+export async function seedPreparationTasks(inquiryId: string, brief: Record<string, unknown>) {
+  const missing = Array.isArray(brief?.missingInformation)
+    ? brief.missingInformation.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 3)
+    : [];
+  await Promise.all([
+    ensureMatterTask(inquiryId, "lawyer_prepare", "Préparer la consultation à partir de la synthèse et des pièces", "lawyer"),
+    ensureMatterTask(inquiryId, "client_documents", "Vérifier que les documents utiles sont bien partagés", "client"),
+    ...missing.map((item, index) => ensureMatterTask(inquiryId, `client_missing_${index}`, item, "client")),
+  ]);
+}

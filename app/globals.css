@@ -5694,6 +5694,50 @@ footer div a {
   .profile-card:hover,
   .lawyer-card:hover { transform: none; }
 }
+
+/* Shared matter flow */
+.matter-flow-banner {
+  margin: 18px 0 24px;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border: 1px solid #dce2eb;
+  border-left: 4px solid #3157d5;
+  border-radius: 12px;
+  background: #fff;
+}
+.matter-flow-banner > div { display: grid; gap: 4px; }
+.matter-flow-banner span { color: #3157d5; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.matter-flow-banner strong { font-size: 18px; }
+.matter-flow-banner p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.matter-flow-banner.actor-none { border-left-color: #75a48d; }
+.matter-flow-banner.actor-none span { color: #39705b; }
+.matter-completion-form { margin-top: 18px; display: grid; gap: 12px; }
+.matter-completion-form label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 700; }
+.matter-completion-form textarea,
+.matter-completion-form input,
+.matter-completion-form select {
+  width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--ink); font: inherit;
+}
+.matter-shared-next { margin-top: 16px; padding: 14px; display: grid; gap: 5px; border-radius: 9px; background: #eef2ff; }
+.matter-shared-next span { color: #3157d5; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.matter-facts-panel { margin-top: 20px; padding: 24px; border: 1px solid var(--line); border-radius: 13px; background: white; }
+.matter-facts-panel > div > h2 { margin: 4px 0; }
+.matter-facts-panel > div > small { color: var(--muted); }
+.matter-facts-panel dl { margin: 20px 0 0; display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.matter-facts-panel dl > div { padding: 15px; display: grid; gap: 5px; border-right: 1px solid var(--line); }
+.matter-facts-panel dl > div:last-child { border-right: 0; }
+.matter-facts-panel dt { color: var(--muted); font-size: 9px; text-transform: uppercase; }
+.matter-facts-panel dd { margin: 0; font-weight: 750; }
+.matter-facts-panel dl span { color: #39705b; font-size: 9px; }
+@media (max-width: 760px) {
+  .matter-flow-banner { align-items: stretch; flex-direction: column; }
+  .matter-facts-panel dl { grid-template-columns: 1fr 1fr; }
+  .matter-facts-panel dl > div:nth-child(2) { border-right: 0; }
+  .matter-facts-panel dl > div { border-bottom: 1px solid var(--line); }
+}
 .nav-link.active { border-bottom-color: #3157d5; }
 .account-button { border-color: #d5dae3; box-shadow: none; }
 .hero::before { background: #eef2ff; }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getLawyerDb } from "@/lib/database";
 import { authorizeMatter } from "@/lib/matter";
+import { getMatterFlow } from "@/lib/matter-flow";
 
 export async function GET(
   _request: Request,
@@ -18,8 +19,19 @@ export async function GET(
     sql`SELECT id,title,assigned_to,status,due_date,created_by,created_at,completed_at FROM matter_tasks WHERE inquiry_id=${id} ORDER BY (status='done') ASC,due_date ASC NULLS LAST,created_at DESC`,
     sql`SELECT id,actor_role,actor_name,event_type,description,created_at FROM matter_events WHERE inquiry_id=${id} ORDER BY created_at DESC LIMIT 30`,
   ]);
+  const openClientTasks = tasks.filter((task) => task.status === "open" && task.assigned_to === "client").length;
+  const openLawyerTasks = tasks.filter((task) => task.status === "open" && task.assigned_to === "lawyer").length;
+  const flow = getMatterFlow({
+    status: actor.inquiry.status,
+    role: actor.role,
+    paymentStatus: actor.inquiry.payment_status,
+    openClientTasks,
+    openLawyerTasks,
+    meetingTime: actor.inquiry.meeting_time,
+  });
   return NextResponse.json({
     actor: { role: actor.role, name: actor.name },
+    flow,
     matter: {
       id,
       status: actor.inquiry.status,
@@ -34,6 +46,8 @@ export async function GET(
       paymentCurrency: actor.inquiry.payment_currency,
       checkoutUrl: "clientCase" in actor ? actor.clientCase?.stripe_checkout_url || "" : "",
       lawyerNote: actor.inquiry.lawyer_note,
+      consultationSummary: actor.inquiry.consultation_summary,
+      nextStep: actor.inquiry.next_step,
       brief: actor.inquiry.brief,
     },
     messages,

@@ -6,7 +6,7 @@ import {
   ensureLawyerWorkflowSchema,
 } from "@/lib/workflow-schema";
 import { sendMeetingInvite, sendPaymentRequired } from "@/lib/meeting-invite";
-import { recordMatterEvent } from "@/lib/matter";
+import { completeMatterTask, ensureMatterTask, recordMatterEvent, reopenMatterTask, seedPreparationTasks } from "@/lib/matter";
 import { getStripe } from "@/lib/stripe";
 
 const allowedStatuses = new Set([
@@ -25,7 +25,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const { status, note } = await request.json();
+  const { status, note, summary, nextStep, nextOwner } = await request.json();
   const lawyerNote = String(note || "").trim();
   if (!allowedStatuses.has(status))
     return NextResponse.json({ error: "Invalid response." }, { status: 400 });
@@ -96,6 +96,10 @@ export async function PATCH(
         `,
       ]);
       await recordMatterEvent(id, "lawyer", inquiry.lawyer_name, "approval", "Approved the request — client payment is now required");
+      await Promise.all([
+        completeMatterTask(id, "lawyer_review"),
+        ensureMatterTask(id, "client_payment", "Régler la consultation pour confirmer le rendez-vous", "client"),
+      ]);
       const email = session.url
         ? await sendPaymentRequired({
             clientName: inquiry.client_name,
@@ -133,6 +137,10 @@ export async function PATCH(
         updated_at=now() WHERE id=${inquiry.external_case_id}
     `;
     await recordMatterEvent(id, "lawyer", inquiry.lawyer_name, "confirmation", "Approved and confirmed the consultation");
+    await Promise.all([
+      completeMatterTask(id, "lawyer_review"),
+      seedPreparationTasks(id, inquiry.brief || {}),
+    ]);
     return NextResponse.json({ inquiry: updated, paymentRequired: false, invitation });
   }
 
@@ -150,19 +158,31 @@ export async function PATCH(
       lawyers`INSERT INTO matter_messages (inquiry_id,author_role,author_name,body)
         VALUES (${id},'lawyer',${inquiry.lawyer_name},${lawyerNote})`,
       recordMatterEvent(id, "lawyer", inquiry.lawyer_name, "question", "Requested additional information from the client"),
+      reopenMatterTask(id, "client_clarification", lawyerNote, "client"),
     ]);
     return NextResponse.json({ inquiry: updated });
   }
 
   if (status === "completed") {
+    const consultationSummary = String(summary || "").trim();
+    const followingStep = String(nextStep || "").trim();
+    if (!consultationSummary)
+      return NextResponse.json({ error: "Ajoutez un court compte rendu partagé avant de terminer la consultation." }, { status: 400 });
     const [updated] = await lawyers`
-      UPDATE inquiries SET status='completed', lawyer_note=${lawyerNote || inquiry.lawyer_note}, updated_at=now()
+      UPDATE inquiries SET status='completed', lawyer_note=${lawyerNote || inquiry.lawyer_note},
+        consultation_summary=${consultationSummary}, next_step=${followingStep}, updated_at=now()
       WHERE id=${id} AND status='confirmed' RETURNING *
     `;
     if (!updated)
       return NextResponse.json({ error: "Only a confirmed consultation can be marked completed." }, { status: 409 });
     await clients`UPDATE cases SET status='completed', updated_at=now() WHERE id=${inquiry.external_case_id}`;
-    await recordMatterEvent(id, "lawyer", inquiry.lawyer_name, "completed", "Marked the consultation as completed");
+    await Promise.all([
+      completeMatterTask(id, "lawyer_prepare"),
+      recordMatterEvent(id, "lawyer", inquiry.lawyer_name, "completed", "Published the consultation summary and next steps"),
+      followingStep && (nextOwner === "client" || nextOwner === "lawyer")
+        ? ensureMatterTask(id, "post_consultation_next", followingStep, nextOwner, "lawyer")
+        : Promise.resolve(),
+    ]);
     return NextResponse.json({ inquiry: updated });
   }
 

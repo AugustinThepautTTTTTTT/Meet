@@ -8,6 +8,7 @@ import {
 } from "@/lib/workflow-schema";
 import { sendRequestReceived } from "@/lib/meeting-invite";
 import { checkRateLimit, requestIp } from "@/lib/rate-limit";
+import { reopenMatterTask } from "@/lib/matter";
 
 export async function POST(
   request: Request,
@@ -153,6 +154,12 @@ export async function POST(
         SELECT 1 FROM matter_events WHERE inquiry_id=${inquiry.id} AND event_type='request'
       )
     `;
+    await reopenMatterTask(
+      inquiry.id,
+      "lawyer_review",
+      "Étudier la synthèse, les pièces et les éventuels conflits d’intérêts",
+      "lawyer",
+    );
     await clients`
       UPDATE cases SET client_account_id=${clientAccountId}, client_name=${effectiveClientName}, client_email=${cleanEmail},
         selected_lawyer_slug=${lawyerSlug}, selected_lawyer_name=${lawyer.name},

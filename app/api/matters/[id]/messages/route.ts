@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getLawyerDb } from "@/lib/database";
-import { authorizeMatter, recordMatterEvent } from "@/lib/matter";
+import { getClientDb, getLawyerDb } from "@/lib/database";
+import { authorizeMatter, completeMatterTask, recordMatterEvent } from "@/lib/matter";
 
 export async function POST(
   request: Request,
@@ -24,5 +24,14 @@ export async function POST(
     RETURNING id,author_role,author_name,body,created_at
   `;
   await recordMatterEvent(id, actor.role, actor.name, "message", "Posted a message");
+  if (actor.role === "client" && actor.inquiry.status === "clarification_requested") {
+    const clients = getClientDb();
+    await Promise.all([
+      sql`UPDATE inquiries SET status='pending', updated_at=now() WHERE id=${id}`,
+      clients`UPDATE cases SET status='meeting_requested', updated_at=now() WHERE id=${actor.inquiry.external_case_id}`,
+      completeMatterTask(id, "client_clarification"),
+      recordMatterEvent(id, "client", actor.name, "response", "Answered the lawyer’s clarification request"),
+    ]);
+  }
   return NextResponse.json({ message }, { status: 201 });
 }

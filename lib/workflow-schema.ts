@@ -106,6 +106,8 @@ export function ensureLawyerWorkflowSchema() {
       await sql`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS payment_amount_cents integer`;
       await sql`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS payment_currency text NOT NULL DEFAULT 'EUR'`;
       await sql`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS stripe_checkout_session_id text NOT NULL DEFAULT ''`;
+      await sql`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS consultation_summary text NOT NULL DEFAULT ''`;
+      await sql`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS next_step text NOT NULL DEFAULT ''`;
       await sql`CREATE TABLE IF NOT EXISTS matter_messages (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         inquiry_id uuid NOT NULL REFERENCES inquiries(id) ON DELETE CASCADE,
@@ -137,6 +139,9 @@ export function ensureLawyerWorkflowSchema() {
         created_at timestamptz NOT NULL DEFAULT now(),
         completed_at timestamptz
       )`;
+      await sql`ALTER TABLE matter_tasks ADD COLUMN IF NOT EXISTS task_key text NOT NULL DEFAULT ''`;
+      await sql`CREATE UNIQUE INDEX IF NOT EXISTS matter_tasks_inquiry_key_unique
+        ON matter_tasks (inquiry_id, task_key) WHERE task_key<>''`;
       await sql`CREATE TABLE IF NOT EXISTS matter_events (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         inquiry_id uuid NOT NULL REFERENCES inquiries(id) ON DELETE CASCADE,

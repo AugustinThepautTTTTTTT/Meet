@@ -3,7 +3,7 @@ import type Stripe from "stripe";
 import { getClientDb, getLawyerDb } from "@/lib/database";
 import { sendMeetingInvite } from "@/lib/meeting-invite";
 import { getStripe } from "@/lib/stripe";
-import { recordMatterEvent } from "@/lib/matter";
+import { completeMatterTask, recordMatterEvent, seedPreparationTasks } from "@/lib/matter";
 import {
   ensureClientWorkflowSchema,
   ensureLawyerWorkflowSchema,
@@ -68,6 +68,10 @@ export async function POST(request: Request) {
           "payment",
           "Payment confirmed — the consultation is now booked",
         );
+        await Promise.all([
+          completeMatterTask(paidInquiry.id, "client_payment"),
+          seedPreparationTasks(paidInquiry.id, paidInquiry.brief || {}),
+        ]);
         if (paidInquiry.meeting_start) {
           const [organizer] = await lawyers`
             SELECT a.email, l.name, COALESCE(c.duration_minutes, 30) AS duration_minutes

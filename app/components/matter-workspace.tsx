@@ -6,6 +6,14 @@ import LoadingScreen from "@/app/components/loading-screen";
 
 type MatterData = {
   actor: { role: "client" | "lawyer"; name: string };
+  flow: {
+    stage: string;
+    actor: "client" | "lawyer" | "both" | "none";
+    title: string;
+    detail: string;
+    actionLabel: string;
+    actionTab: "overview" | "messages" | "files" | "tasks";
+  };
   matter: {
     id: string;
     status: string;
@@ -20,6 +28,8 @@ type MatterData = {
     paymentCurrency?: string;
     checkoutUrl?: string;
     lawyerNote?: string;
+    consultationSummary?: string;
+    nextStep?: string;
     brief: {
       practice?: string;
       summary?: string;
@@ -47,11 +57,11 @@ function fileSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-const workflowSteps = ["Demande", "Validation avocat", "Paiement", "Consultation"];
+const workflowSteps = ["Demande", "Validation", "Paiement", "Préparation", "Consultation", "Suivi"];
 
-function workflowPosition(status: string) {
-  if (status === "completed") return 5;
-  if (status === "confirmed") return 4;
+function workflowPosition(status: string, openTasks: number) {
+  if (status === "completed") return openTasks ? 6 : 7;
+  if (status === "confirmed") return openTasks ? 4 : 5;
   if (status === "payment_pending") return 3;
   if (status === "declined") return 0;
   return 2;
@@ -80,6 +90,7 @@ function eventCopy(type: string, description: string) {
     payment: ["Paiement", "Paiement confirmé et consultation réservée"],
     confirmation: ["Confirmation", "Consultation validée et confirmée"],
     question: ["Précision", "L’avocat a demandé une information complémentaire"],
+    response: ["Réponse", "Le client a répondu à la demande de précision"],
     declined: ["Décision", "Demande refusée par l’avocat"],
     completed: ["Consultation", "Consultation marquée comme terminée"],
     message: ["Message", "Nouveau message dans le dossier"],
@@ -98,6 +109,7 @@ export default function MatterWorkspace({ matterId }: { matterId: string }) {
   const [error, setError] = useState("");
   const [statusNote, setStatusNote] = useState("");
   const [paymentNotice, setPaymentNotice] = useState("");
+  const [completion, setCompletion] = useState({ summary: "", nextStep: "", nextOwner: "client" });
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/matters/${matterId}`);
@@ -133,7 +145,7 @@ export default function MatterWorkspace({ matterId }: { matterId: string }) {
     const response = await fetch(`/api/account/inquiries/${matterId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, note: statusNote }),
+      body: JSON.stringify({ status, note: statusNote, ...completion }),
     });
     const result = await response.json();
     if (!response.ok) setError(result.error || "La demande n’a pas pu être mise à jour.");
@@ -220,7 +232,7 @@ export default function MatterWorkspace({ matterId }: { matterId: string }) {
 
   const otherParty = data.actor.role === "client" ? data.matter.lawyerName : data.matter.clientName;
   const openTasks = data.tasks.filter((item) => item.status === "open").length;
-  const position = workflowPosition(data.matter.status);
+  const position = workflowPosition(data.matter.status, openTasks);
   const paymentRequired = data.matter.paymentStatus === "unpaid" || data.matter.paymentStatus === "paid";
   return (
     <main className="matter-shell">
@@ -247,11 +259,20 @@ export default function MatterWorkspace({ matterId }: { matterId: string }) {
         {workflowSteps.map((step, index) => {
           const stepNumber = index + 1;
           const paymentSkipped = step === "Paiement" && !paymentRequired;
-          return <div className={stepNumber < position || data.matter.status === "completed" || paymentSkipped && position >= 3 ? "done" : stepNumber === position ? "current" : ""} key={step}>
-            <span>{stepNumber < position || data.matter.status === "completed" || paymentSkipped && position >= 3 ? "✓" : stepNumber}</span>
+          const done = stepNumber < position || paymentSkipped && position >= 3;
+          return <div className={done ? "done" : stepNumber === position ? "current" : ""} key={step}>
+            <span>{done ? "✓" : stepNumber}</span>
             <strong>{paymentSkipped ? "Aucun paiement requis" : step}</strong>
           </div>;
         })}
+      </section>
+      <section className={`matter-flow-banner actor-${data.flow.actor}`}>
+        <div>
+          <span>{data.flow.actor === "client" ? "Action client" : data.flow.actor === "lawyer" ? "Action avocat" : data.flow.actor === "both" ? "Actions partagées" : "Dossier à jour"}</span>
+          <strong>{data.flow.title}</strong>
+          <p>{data.flow.detail}</p>
+        </div>
+        <button className="card-button" onClick={() => setTab(data.flow.actionTab)}>{data.flow.actionLabel} <span>→</span></button>
       </section>
       <section className="matter-focus-grid">
         <article className="matter-next-action">
@@ -277,9 +298,14 @@ export default function MatterWorkspace({ matterId }: { matterId: string }) {
             <h2>Votre consultation est confirmée</h2>
             <p>La synthèse, les documents et les tâches de préparation restent réunis ici.</p>
             {data.matter.meetingUrl ? <a className="primary-button compact" href={data.matter.meetingUrl} target="_blank" rel="noreferrer">Rejoindre la visioconférence <span>↗</span></a> : null}
-            {data.actor.role === "lawyer" ? <button className="card-button" disabled={busy === "status"} onClick={() => void updateStatus("completed")}>Marquer la consultation comme terminée</button> : null}
+            {data.actor.role === "lawyer" ? <div className="matter-completion-form">
+              <label>Compte rendu partagé<textarea rows={4} value={completion.summary} onChange={(event) => setCompletion({ ...completion, summary: event.target.value })} placeholder="Ce qui a été clarifié pendant la consultation…" /></label>
+              <label>Prochaine étape<input value={completion.nextStep} onChange={(event) => setCompletion({ ...completion, nextStep: event.target.value })} placeholder="Ex. : transmettre le contrat signé" /></label>
+              {completion.nextStep ? <label>Responsable<select value={completion.nextOwner} onChange={(event) => setCompletion({ ...completion, nextOwner: event.target.value })}><option value="client">Client</option><option value="lawyer">Avocat</option></select></label> : null}
+              <button className="card-button" disabled={busy === "status" || !completion.summary.trim()} onClick={() => void updateStatus("completed")}>Publier le compte rendu et terminer</button>
+            </div> : null}
           </> : null}
-          {data.matter.status === "completed" ? <><h2>Consultation terminée</h2><p>Le dossier reste accessible pour les documents, décisions et prochaines étapes.</p></> : null}
+          {data.matter.status === "completed" ? <><h2>Consultation terminée</h2><p>{data.matter.consultationSummary || "Le dossier reste accessible pour les documents, décisions et prochaines étapes."}</p>{data.matter.nextStep ? <div className="matter-shared-next"><span>Prochaine étape</span><strong>{data.matter.nextStep}</strong></div> : null}</> : null}
           {data.matter.status === "declined" ? <><h2>Cette demande a été refusée</h2><p>La synthèse et les documents restent accessibles afin de contacter un autre avocat.</p></> : null}
         </article>
         <article className="matter-intelligence">
@@ -304,6 +330,15 @@ export default function MatterWorkspace({ matterId }: { matterId: string }) {
             <article><span>Intervenants</span><strong>{data.matter.clientName}</strong><p>Client</p><strong>{data.matter.lawyerName}</strong><p>Avocat</p></article>
             <article><span>Avancement</span><strong>{openTasks} tâche{openTasks === 1 ? "" : "s"} ouverte{openTasks === 1 ? "" : "s"}</strong><p>{data.files.length} document{data.files.length === 1 ? "" : "s"} · {data.messages.length} message{data.messages.length === 1 ? "" : "s"}</p></article>
             <article><span>Objectif</span><strong>{data.matter.brief.desiredOutcome || "Clarifier les options juridiques et les prochaines étapes"}</strong><p>{data.matter.brief.deadline || "Aucune échéance confirmée"}</p></article>
+          </div>
+          <div className="matter-facts-panel">
+            <div><p className="section-kicker">Informations structurées</p><h2>Ce que le dossier contient</h2><small>Les informations issues de l’échange restent modifiables dans la synthèse.</small></div>
+            <dl>
+              <div><dt>Domaine</dt><dd>{data.matter.brief.practice || "À qualifier"}</dd><span>Synthèse Repere</span></div>
+              <div><dt>Juridiction</dt><dd>{data.matter.brief.jurisdiction || "À confirmer"}</dd><span>{data.matter.brief.jurisdiction ? "Déclaré dans le dossier" : "À vérifier avec l’avocat"}</span></div>
+              <div><dt>Échéance</dt><dd>{data.matter.brief.deadline || "Aucune confirmée"}</dd><span>{data.matter.brief.deadline ? "Issue de la synthèse" : "À vérifier"}</span></div>
+              <div><dt>Pièces</dt><dd>{data.files.length} document{data.files.length === 1 ? "" : "s"}</dd><span>Partagées dans ce dossier</span></div>
+            </dl>
           </div>
           <div className="matter-activity">
             <div><p className="section-kicker">Historique</p><h2>Toute l’activité du dossier</h2></div>
