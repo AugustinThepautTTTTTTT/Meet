@@ -1036,10 +1036,10 @@ export default function Home() {
         />
       ) : view === "client" ? (
         <>
-          <section className="hero" id="top">
+          <section className={clientStep === "describe" ? "hero" : "hero flow-active"} id="top">
             <div className="hero-intro">
               <div className="eyebrow">
-                <span /> AI-guided legal matching
+                <span /> {locale === "fr" ? "Mise en relation juridique" : "Legal matching made simple"}
               </div>
               <h1>
                 Tell us what happened.
@@ -1078,7 +1078,7 @@ export default function Home() {
                   <div className="intake-document-upload-heading">
                     <div>
                       <strong>{locale === "fr" ? "Vous avez un document utile ?" : "Have a relevant document?"}</strong>
-                      <span>{locale === "fr" ? "Ajoutez-le : Gemini lira le document complet et l’intégrera à la conversation." : "Attach it: Gemini will read the complete document and use it in the conversation."}</span>
+                      <span>{locale === "fr" ? "Ajoutez-le pour que nous puissions mieux comprendre votre situation." : "Attach it so we can better understand your situation."}</span>
                     </div>
                     <label className={documentStatus === "uploading" || intakeDocuments.length >= 3 ? "disabled" : ""}>
                       <input
@@ -1157,7 +1157,7 @@ export default function Home() {
               )}
             </div>
           </section>
-          <section className="trust-strip">
+          <section className={clientStep === "describe" ? "trust-strip" : "trust-strip flow-active"}>
             <div>
               <strong>Verified</strong>
               <span>Every lawyer is credential-checked</span>
@@ -1580,15 +1580,12 @@ function ChatIntake({
     <section className="guided-chat-section" id="guided-conversation">
       <div className="chat-workspace">
       <div className="chat-shell">
-        <header>
-          <div className="meet-chat-avatar">M</div>
+        <header className="conversation-header">
           <div>
-            <strong>{locale === "fr" ? "Assistant Meet" : "Meet assistant"}</strong>
-            <span>
-              <i /> {locale === "fr" ? "Compréhension de votre situation" : `Understanding your ${practice.toLowerCase()} matter`}
-            </span>
+            <strong>{locale === "fr" ? "Votre demande" : "Your request"}</strong>
+            <span>{locale === "fr" ? "Décrivez librement votre situation" : `Describe your ${practice.toLowerCase()} matter in your own words`}</span>
           </div>
-          <small>{locale === "fr" ? "Conversation privée tenant compte de vos documents" : "Private, document-aware conversation"}</small>
+          <small><i /> {locale === "fr" ? "Confidentiel" : "Confidential"}</small>
         </header>
         <div className="chat-transcript" aria-live="polite">
           <div className="chat-row user">
@@ -1620,7 +1617,6 @@ function ChatIntake({
               key={`${exchange.question}-${index}`}
             >
               <div className="chat-row meet">
-                <span>M</span>
                 <p>{exchange.question}</p>
               </div>
               <div className="chat-row user">
@@ -1629,7 +1625,6 @@ function ChatIntake({
             </div>
           ))}
           <div className="chat-row meet current">
-            <span>M</span>
             <div>
               <p className="chat-assistant-message">
                 {finishing
@@ -1641,12 +1636,12 @@ function ChatIntake({
                 <div className="ai-generation-trace" role="status">
                   <span className="streaming-dot" />
                   <span>{aiActivity.label}</span>
-                  <small>Gemini 3.5 Flash-Lite · {traceSeconds}s · streaming</small>
+                  <small>{traceSeconds}s</small>
                 </div>
               ) : aiActivity.trace ? (
                 <details className="ai-generation-trace complete">
-                  <summary>{locale === "fr" ? "Détails de génération" : "Generation details"}</summary>
-                  <span>{aiActivity.trace.model} · {(aiActivity.trace.durationMs / 1000).toFixed(1)} s{aiActivity.trace.ttftMs ? ` · 1er texte ${(aiActivity.trace.ttftMs / 1000).toFixed(1)} s` : ""}</span>
+                  <summary>{locale === "fr" ? `Réponse en ${(aiActivity.trace.durationMs / 1000).toFixed(1)} s` : `Answered in ${(aiActivity.trace.durationMs / 1000).toFixed(1)} s`}</summary>
+                  <span>{aiActivity.trace.ttftMs ? (locale === "fr" ? `Début de la réponse après ${(aiActivity.trace.ttftMs / 1000).toFixed(1)} s` : `Response started after ${(aiActivity.trace.ttftMs / 1000).toFixed(1)} s`) : ""}</span>
                 </details>
               ) : null}
             </div>
@@ -1693,7 +1688,7 @@ function ChatIntake({
                 </button>
               </form>
             )}
-            <p className="chat-ai-file-note">{locale === "fr" ? "Meet extrait les faits utiles avec l’IA. L’original reste privé et n’est transmis qu’à l’avocat contacté." : "Meet extracts relevant facts with AI. The original stays private and is shared only with the lawyer you contact."}</p>
+            <p className="chat-ai-file-note">{locale === "fr" ? "Vos documents restent privés et ne sont transmis qu’à l’avocat que vous contactez." : "Your documents stay private and are only shared with the lawyer you contact."}</p>
             <button className="chat-restart" onClick={onRestart}>
               ← {locale === "fr" ? "Modifier mon premier message" : "Change my first message"}
             </button>
@@ -1714,8 +1709,11 @@ function ChatIntake({
       </div>
       <aside className="live-case-summary" aria-live="polite">
         <header>
-          <span>{locale === "fr" ? "Synthèse en direct" : "Live case summary"}</span>
-          <i className={intake ? "active" : ""} />
+          <div>
+            <span>{locale === "fr" ? "Votre dossier" : "Your case"}</span>
+            <small>{locale === "fr" ? "Mis à jour pendant l’échange" : "Updated as you talk"}</small>
+          </div>
+          <i className={intake ? "active" : ""} aria-hidden="true" />
         </header>
         <h2>{intake?.dispute || (locale === "fr" ? "Compréhension de votre situation" : "Understanding your situation")}</h2>
         <p className="live-summary-copy">
@@ -1723,7 +1721,7 @@ function ChatIntake({
         </p>
         {intake?.keyFacts?.length ? (
           <section>
-            <h3>{locale === "fr" ? "Ce que nous avons compris" : "What we understand"}</h3>
+            <h3>{locale === "fr" ? "Éléments clés" : "Key details"}</h3>
             <ul>{intake.keyFacts.slice(0, 5).map((fact) => <li key={fact}>{fact}</li>)}</ul>
           </section>
         ) : null}
