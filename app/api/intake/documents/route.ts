@@ -47,7 +47,20 @@ function parseDocumentAnalysis(raw: string) {
   const start = withoutFences.indexOf("{");
   const end = withoutFences.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("Gemini returned no JSON object.");
-  return documentAnalysisSchema.parse(JSON.parse(withoutFences.slice(start, end + 1)));
+  const candidate = JSON.parse(withoutFences.slice(start, end + 1)) as Record<string, unknown>;
+  const limited = (key: string, maximum: number) =>
+    Array.isArray(candidate[key]) ? candidate[key].map(String).filter(Boolean).slice(0, maximum) : [];
+  return documentAnalysisSchema.parse({
+    ...candidate,
+    claims: limited("claims", 8),
+    chronology: limited("chronology", 20),
+    legalIssues: limited("legalIssues", 12),
+    citedEvidence: limited("citedEvidence", 12),
+    uncertainties: limited("uncertainties", 10),
+    relevantFacts: limited("relevantFacts", 20),
+    dates: limited("dates", 20),
+    parties: limited("parties", 20),
+  });
 }
 
 async function extractDocumentText(file: File, bytes: Uint8Array, deep: boolean) {
@@ -211,10 +224,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     console.error(JSON.stringify({ level: "error", msg: "intake_document_upload_failed", route: "/api/intake/documents", detail }));
-    return NextResponse.json(
-      { error: "Meet could not read this document.", diagnostic: detail.slice(0, 600) },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Meet could not read this document." }, { status: 500 });
   }
 }
 
