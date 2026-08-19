@@ -48,16 +48,14 @@ export async function POST(request: Request) {
 
   console.log(JSON.stringify({ level: "info", msg: "ai_generation_started", route: "/api/intake/stream", requestId, generationId, model: "gemini-3.5-flash", turns: exchanges.length, documents: documents.length }));
 
-  // A short plain-text call gives the user the first words quickly. The more
-  // expensive structured case model is generated concurrently for the sidebar.
-  const replyResult = streamText({
+  const createReplyResult = (state: Record<string, unknown>) => streamText({
     model: google("gemini-3.5-flash-lite"),
     providerOptions: { google: { thinkingConfig: { thinkingLevel: "minimal" } } },
     maxOutputTokens: 500,
     system: `You are Meet, a highly attentive legal-intake conversationalist for the French legal market. Today is ${today}. Never give legal advice, decide who is right, or predict an outcome. ${locale === "fr" ? "Reply ONLY in natural French. Never use English." : "Reply only in English."}
 
-Write only the actual client-facing reply, with no JSON or label. Use 2 to 4 natural sentences: acknowledge the specific new information, explain one useful inference or show how it changes your understanding, then—only if materially necessary—ask exactly one focused question. Never recite a checklist, announce processing, or ask the client to repeat facts present in a document. Use all attached evidence first. Distinguish allegations from facts and interpret dates relative to today. If enough is known for matching, say so naturally and ask no question.`,
-    prompt: context,
+Write only the actual client-facing reply, with no JSON or label. The silent case assessment below has already determined that one consequential detail is still required. Use 2 to 4 natural sentences: acknowledge the specific new information, explain one useful inference or show how it changes your understanding, then ask exactly one focused question about the most important missing detail. Never recite a checklist, announce processing, or ask the client to repeat facts present in a document. Use all attached evidence first. Distinguish allegations from facts and interpret dates relative to today.`,
+    prompt: `${context}\n\nSilent case assessment:\n${JSON.stringify(state)}`,
   });
   const createStateResult = () => streamText({
     model: google("gemini-3.5-flash"),
@@ -76,26 +74,46 @@ Use the full document evidence before marking anything missing. Identify the pre
       controller.enqueue(event("trace", { generationId, stage: "understanding", label: locale === "fr" ? "Lecture de votre message" : "Reading your message" }));
       try {
         let reply = "";
-        // Prioritise the visible conversation on free-tier quotas. Starting the
-        // structured call at the same time can make Google queue both requests.
-        for await (const delta of replyResult.textStream) {
-          if (!firstOutputAt) firstOutputAt = Date.now();
-          reply += delta;
-          controller.enqueue(event("text-delta", { generationId, delta, text: reply }));
-        }
-        controller.enqueue(event("trace", { generationId, stage: "structuring", label: locale === "fr" ? "Mise à jour de la synthèse" : "Updating the case summary" }));
+        let replyUsage: { inputTokens?: number; outputTokens?: number } = {};
+        controller.enqueue(event("trace", { generationId, stage: "structuring", label: locale === "fr" ? "Mise à jour de votre dossier" : "Updating your case" }));
         const stateResult = createStateResult();
         for await (const partial of stateResult.partialOutputStream)
           controller.enqueue(event("partial", { generationId, intake: partial }));
-        const [state, stateUsage, replyUsage] = await Promise.all([stateResult.output, stateResult.usage, replyResult.usage]);
-        const question = finalQuestion(reply);
+        const [state, stateUsage] = await Promise.all([stateResult.output, stateResult.usage]);
+
+        if (state.ready) {
+          reply = locale === "fr"
+            ? "J’ai maintenant les éléments nécessaires pour comprendre votre situation et identifier les avocats adaptés. Je prépare votre sélection à partir de votre dossier, du domaine juridique et de la juridiction concernée."
+            : "I now have what I need to understand your situation and identify suitable lawyers. I’m preparing your selection using your case, the legal area and the relevant jurisdiction.";
+          firstOutputAt = Date.now();
+          controller.enqueue(event("text-delta", { generationId, delta: reply, text: reply }));
+        } else {
+          controller.enqueue(event("trace", { generationId, stage: "replying", label: locale === "fr" ? "Préparation de la prochaine question" : "Preparing the next question" }));
+          const replyResult = createReplyResult(state as Record<string, unknown>);
+          for await (const delta of replyResult.textStream) {
+            if (!firstOutputAt) firstOutputAt = Date.now();
+            reply += delta;
+            controller.enqueue(event("text-delta", { generationId, delta, text: reply }));
+          }
+          replyUsage = await replyResult.usage;
+        }
+
+        let question = state.ready ? "" : finalQuestion(reply);
+        if (!state.ready && !question) {
+          const missing = clean(state.missingInformation?.[0], 320);
+          question = locale === "fr"
+            ? `Pouvez-vous préciser ce point${missing ? ` : ${missing}` : " pour que je puisse finaliser votre dossier"} ?`
+            : `Could you clarify this point${missing ? `: ${missing}` : " so I can complete your case"}?`;
+          reply = `${reply.trim()} ${question}`.trim();
+          controller.enqueue(event("text-delta", { generationId, delta: ` ${question}`, text: reply }));
+        }
         const output = {
           ...state,
           assistantMessage: reply.trim(),
           acknowledgement: reply.split(/(?<=[.!?])\s+/)[0] || reply.trim(),
           nextQuestion: question,
           options: [],
-          ready: question ? state.ready : true,
+          ready: state.ready,
         };
         const durationMs = Date.now() - startedAt;
         const ttftMs = firstOutputAt ? firstOutputAt - startedAt : null;
