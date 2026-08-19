@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { randomUUID } from "node:crypto";
 
 const COOKIE_NAME = "meet_lawyer_session";
 const CLIENT_COOKIE_NAME = "meet_client_session";
@@ -14,6 +15,9 @@ export async function createSession(accountId: string) {
   const token = await new SignJWT({ role: "lawyer" })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(accountId)
+    .setIssuer("meet")
+    .setAudience("meet-lawyer")
+    .setJti(randomUUID())
     .setIssuedAt()
     .setExpirationTime("30d")
     .sign(secret());
@@ -36,10 +40,20 @@ export async function getAccountId() {
   const token = (await cookies()).get(COOKIE_NAME)?.value;
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secret());
-    return typeof payload.sub === "string" ? payload.sub : null;
+    const { payload } = await jwtVerify(token, secret(), {
+      issuer: "meet",
+      audience: "meet-lawyer",
+    });
+    return payload.role === "lawyer" && typeof payload.sub === "string" ? payload.sub : null;
   } catch {
-    return null;
+    // Keep sessions created before issuer/audience hardening valid until their
+    // original 30-day expiry. New sessions always use the stricter claims.
+    try {
+      const { payload } = await jwtVerify(token, secret());
+      return payload.role === "lawyer" && typeof payload.sub === "string" ? payload.sub : null;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -47,6 +61,9 @@ export async function createClientSession(accountId: string) {
   const token = await new SignJWT({ role: "client" })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(accountId)
+    .setIssuer("meet")
+    .setAudience("meet-client")
+    .setJti(randomUUID())
     .setIssuedAt()
     .setExpirationTime("30d")
     .sign(secret());
@@ -64,12 +81,22 @@ export async function getClientAccountId() {
   const token = (await cookies()).get(CLIENT_COOKIE_NAME)?.value;
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secret());
+    const { payload } = await jwtVerify(token, secret(), {
+      issuer: "meet",
+      audience: "meet-client",
+    });
     return payload.role === "client" && typeof payload.sub === "string"
       ? payload.sub
       : null;
   } catch {
-    return null;
+    try {
+      const { payload } = await jwtVerify(token, secret());
+      return payload.role === "client" && typeof payload.sub === "string"
+        ? payload.sub
+        : null;
+    } catch {
+      return null;
+    }
   }
 }
 

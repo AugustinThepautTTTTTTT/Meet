@@ -7,12 +7,19 @@ import {
   ensureLawyerWorkflowSchema,
 } from "@/lib/workflow-schema";
 import { sendRequestReceived } from "@/lib/meeting-invite";
+import { checkRateLimit, requestIp } from "@/lib/rate-limit";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const rate = checkRateLimit(`booking:${requestIp(request)}`, 10, 60 * 60_000);
+    if (!rate.allowed)
+      return NextResponse.json(
+        { error: "Trop de demandes. Réessayez plus tard." },
+        { status: 429, headers: { "Retry-After": String(rate.retryAfter) } },
+      );
     const { id } = await params;
     const {
       lawyerSlug,

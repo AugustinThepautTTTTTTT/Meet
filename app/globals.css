@@ -5845,6 +5845,45 @@ footer div a {
   font-weight: 750;
   text-decoration: none;
 }
+.google-auth-button {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  border: 1px solid #d8dde4;
+  border-radius: 10px;
+  background: #fff;
+  color: #182031;
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: border-color .2s, box-shadow .2s;
+}
+.google-auth-button:hover { border-color: #9aa7bc; box-shadow: 0 4px 14px rgba(24,32,49,.08); }
+.google-auth-button span {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #3566c5;
+  background: #f2f6ff;
+  font-size: 12px;
+  font-weight: 800;
+}
+.auth-separator {
+  margin: 17px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 8px;
+}
+.auth-separator::before,
+.auth-separator::after { content: ""; height: 1px; flex: 1; background: var(--line); }
 .matter-shell {
   min-height: 100vh;
   padding: 28px max(4vw, 22px) 90px;

@@ -96,7 +96,7 @@ function caseStage(status: string) {
   return 2;
 }
 
-export default function ClientAccount() {
+export default function ClientAccount({ googleEnabled = false }: { googleEnabled?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [account, setAccount] = useState<{
     name: string;
@@ -118,12 +118,15 @@ export default function ClientAccount() {
   }
 
   useEffect(() => {
-    const payment = new URLSearchParams(window.location.search).get("payment");
+    const params = new URLSearchParams(window.location.search);
+    const payment = params.get("payment");
     const timer = window.setTimeout(() => {
       if (payment === "success")
         setPaymentNotice("Paiement reçu. Votre consultation est en cours de confirmation.");
       if (payment === "cancelled")
         setPaymentNotice("Paiement annulé. La validation de l’avocat reste valable dans votre dossier.");
+      if (params.get("oauth") === "failed")
+        setError("La connexion Google a échoué. Vous pouvez réessayer ou utiliser votre mot de passe.");
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
@@ -170,6 +173,9 @@ export default function ClientAccount() {
           <p className="section-kicker">Espace client</p>
           <h1>Suivez vos demandes juridiques.</h1>
           <p>Connectez-vous avec le compte créé lors de votre première demande.</p>
+          {googleEnabled ? <><a className="google-auth-button" href="/api/oauth/google/start?role=client">
+            <span>G</span> Continuer avec Google
+          </a><div className="auth-separator"><span>ou</span></div></> : null}
           <form onSubmit={login}>
             <label>
               Email

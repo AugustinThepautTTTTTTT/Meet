@@ -10,13 +10,16 @@
     "build": "next build",
     "start": "next start",
     "test": "npm run build",
+    "smoke": "node scripts/smoke.mjs",
     "lint": "eslint . --ignore-pattern .next",
     "db:init": "node --env-file=.env.local scripts/init-db.mjs"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.44",
     "@neondatabase/serverless": "^1.0.2",
+    "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.7.0",
+    "@vercel/speed-insights": "^2.0.0",
     "ai": "^7.0.58",
     "bcryptjs": "^3.0.3",
     "jose": "^6.2.8",

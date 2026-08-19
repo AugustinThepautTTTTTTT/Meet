@@ -50,7 +50,9 @@ export async function GET() {
       coverPhotoUrl: row.cover_photo_url,
       tagline: row.tagline,
     }));
-    return NextResponse.json({ lawyers });
+    return NextResponse.json({ lawyers }, {
+      headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" },
+    });
   } catch (error) {
     console.error("lawyer_list_failed", error);
     return NextResponse.json(

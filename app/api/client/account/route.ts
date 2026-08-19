@@ -29,5 +29,8 @@ export async function GET() {
       return { ...item, matter_id: inquiry?.id || null };
     }),
   );
-  return NextResponse.json({ account, cases: casesWithMatters });
+  return NextResponse.json(
+    { account, cases: casesWithMatters },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }

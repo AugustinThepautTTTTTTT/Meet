@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function AccountForm() {
+export default function AccountForm({ googleEnabled = false }: { googleEnabled?: boolean }) {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("register");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
@@ -93,6 +93,9 @@ export default function AccountForm() {
               ? "Start with the essentials, then design your public profile at your own pace."
               : "Manage your public profile, articles and visibility."}
           </p>
+          {googleEnabled ? <><a className="google-auth-button" href="/api/oauth/google/start?role=lawyer">
+            <span>G</span> Continuer avec Google
+          </a><div className="auth-separator"><span>ou</span></div></> : null}
           <form onSubmit={submit}>
             {mode === "register" && (
               <label>

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { DM_Sans, Lora } from "next/font/google";
 import "./meet-styles.css";
 import { LocaleProvider } from "./components/locale-provider";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const sans = DM_Sans({
   variable: "--font-sans",
@@ -42,7 +44,11 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fr">
-      <body className={`${sans.variable} ${serif.variable}`}><LocaleProvider>{children}</LocaleProvider></body>
+      <body className={`${sans.variable} ${serif.variable}`}>
+        <LocaleProvider>{children}</LocaleProvider>
+        <Analytics />
+        <SpeedInsights />
+      </body>
     </html>
   );
 }

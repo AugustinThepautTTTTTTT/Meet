@@ -40,5 +40,5 @@ export async function GET(
     files,
     tasks,
     events,
-  });
+  }, { headers: { "Cache-Control": "private, no-store" } });
 }
