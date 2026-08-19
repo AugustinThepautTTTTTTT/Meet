@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { del, put } from "@vercel/blob";
 import { google } from "@ai-sdk/google";
-import { generateText, Output } from "ai";
+import { generateText } from "ai";
 import mammoth from "mammoth";
 import { extractText, getDocumentProxy } from "unpdf";
 import { z } from "zod";
@@ -40,6 +40,14 @@ const documentAnalysisSchema = z.object({
 
 function cleanText(value: string) {
   return value.split(String.fromCharCode(0)).join("").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function parseDocumentAnalysis(raw: string) {
+  const withoutFences = raw.replace(/^\s*```(?:json)?/i, "").replace(/```\s*$/i, "").trim();
+  const start = withoutFences.indexOf("{");
+  const end = withoutFences.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("Gemini returned no JSON object.");
+  return documentAnalysisSchema.parse(JSON.parse(withoutFences.slice(start, end + 1)));
 }
 
 async function extractDocumentText(file: File, bytes: Uint8Array, deep: boolean) {
@@ -102,7 +110,9 @@ Extract separately every named claimant, defendant, lawyer, representative and t
 
 Analyse the complete supplied document, including every page. detailedAnalysis must be a coherent, substantial case study of roughly 700-1200 words when the source supports it, covering context, parties, facts, respective positions, claims, procedure, chronology, apparent legal issues, evidentiary elements and uncertainties. It must be useful enough that the subsequent conversation does not ask the client to repeat the document. summary remains a 100-180 word executive overview. chronology must be ordered and precise. legalIssues are issue-spotting labels, not conclusions. uncertainties contain only information genuinely absent, illegible or impossible to determine from the document. Do not treat the first pages as the whole matter: inspect schedules, exhibits and final requested relief as well.
 
-${locale === "fr" ? "Write all analysis in precise, natural French." : "Write all analysis in precise English."}`;
+${locale === "fr" ? "Write all analysis in precise, natural French." : "Write all analysis in precise English."}
+
+Return one valid JSON object and nothing else. It must contain exactly these keys: documentType (string), summary (string), disputeObject (string), claims (array of strings), procedure (string), detailedAnalysis (string), chronology (array of strings), legalIssues (array of strings), citedEvidence (array of strings), uncertainties (array of strings), relevantFacts (array of strings), dates (array of strings), parties (array of strings). Do not wrap the JSON in Markdown fences.`;
   const messages = [{
     role: "user" as const,
     content: mediaType === "application/pdf"
@@ -117,14 +127,14 @@ ${locale === "fr" ? "Write all analysis in precise, natural French." : "Write al
     const attemptStartedAt = Date.now();
     console.log(JSON.stringify({ level: "info", msg: "intake_document_analysis_started", route: "/api/intake/documents", model: modelId, filename, bytes: bytes.byteLength }));
     try {
-    const { output } = await generateText({
+    const { text: rawOutput } = await generateText({
       model: google(modelId),
       providerOptions: { google: { thinkingConfig: { thinkingLevel: modelId.includes("lite") ? "minimal" : "low" } } },
-      output: Output.object({ schema: documentAnalysisSchema }),
       maxOutputTokens: 8000,
       system,
       messages,
     });
+    const output = parseDocumentAnalysis(rawOutput);
     console.log(JSON.stringify({ level: "info", msg: "intake_document_analysis_completed", route: "/api/intake/documents", model: modelId, filename, ms: Date.now() - attemptStartedAt }));
     return {
       ...output,
