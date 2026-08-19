@@ -209,8 +209,12 @@ export async function POST(request: Request) {
     `;
     return NextResponse.json({ document: { ...document, token: accessToken } }, { status: 201 });
   } catch (error) {
-    console.error("intake_document_upload_failed", error);
-    return NextResponse.json({ error: "Meet could not read this document." }, { status: 500 });
+    const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    console.error(JSON.stringify({ level: "error", msg: "intake_document_upload_failed", route: "/api/intake/documents", detail }));
+    return NextResponse.json(
+      { error: "Meet could not read this document.", diagnostic: detail.slice(0, 600) },
+      { status: 500 },
+    );
   }
 }
 
