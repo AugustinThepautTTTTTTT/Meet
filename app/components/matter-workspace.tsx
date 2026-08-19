@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import LoadingScreen from "@/app/components/loading-screen";
 
 type MatterData = {
   actor: { role: "client" | "lawyer"; name: string };
@@ -215,7 +216,7 @@ export default function MatterWorkspace({ matterId }: { matterId: string }) {
 
   if (error && !data)
     return <main className="matter-shell"><div className="matter-error"><h1>Dossier indisponible</h1><p>{error}</p><Link href="/">Retour à Repere</Link></div></main>;
-  if (!data) return <main className="matter-shell"><p>Ouverture de votre espace sécurisé…</p></main>;
+  if (!data) return <LoadingScreen />;
 
   const otherParty = data.actor.role === "client" ? data.matter.lawyerName : data.matter.clientName;
   const openTasks = data.tasks.filter((item) => item.status === "open").length;

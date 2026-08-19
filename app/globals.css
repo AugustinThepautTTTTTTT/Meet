@@ -5612,6 +5612,88 @@ footer div a {
   border-color: #6d8bf0;
   transform: rotate(-90deg);
 }
+
+/* Short, quiet route transitions */
+@keyframes repere-page-in {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes repere-loader-pulse {
+  0%, 100% { opacity: .32; transform: scaleX(.96); }
+  50% { opacity: .8; transform: scaleX(1); }
+}
+.hero,
+.guided-chat-section,
+.client-account-shell,
+.dashboard-shell,
+.matter-shell,
+.lawyer-profile-page,
+.article-page,
+.auth-shell {
+  animation: repere-page-in 320ms cubic-bezier(.22, .8, .28, 1) both;
+}
+.client-case-card,
+.matter-panel,
+.profile-card,
+.lawyer-card,
+.inquiry-workspace {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+.client-case-card:hover,
+.profile-card:hover,
+.lawyer-card:hover {
+  transform: translateY(-2px);
+}
+.repere-loader {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 28px;
+  background: #f7f8fa;
+  color: #172033;
+  animation: repere-page-in 180ms ease-out both;
+}
+.repere-loader.compact { min-height: 320px; }
+.repere-loader-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 21px;
+  letter-spacing: -.02em;
+}
+.repere-loader-content {
+  width: 156px;
+  display: grid;
+  gap: 8px;
+}
+.repere-loader-content span {
+  height: 5px;
+  border-radius: 999px;
+  background: #dce3f5;
+  transform-origin: left;
+  animation: repere-loader-pulse 820ms ease-in-out infinite;
+}
+.repere-loader-content span:nth-child(2) { width: 76%; animation-delay: 90ms; }
+.repere-loader-content span:nth-child(3) { width: 48%; animation-delay: 180ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero,
+  .guided-chat-section,
+  .client-account-shell,
+  .dashboard-shell,
+  .matter-shell,
+  .lawyer-profile-page,
+  .article-page,
+  .auth-shell,
+  .repere-loader,
+  .repere-loader-content span {
+    animation: none !important;
+  }
+  .client-case-card:hover,
+  .profile-card:hover,
+  .lawyer-card:hover { transform: none; }
+}
 .nav-link.active { border-bottom-color: #3157d5; }
 .account-button { border-color: #d5dae3; box-shadow: none; }
 .hero::before { background: #eef2ff; }

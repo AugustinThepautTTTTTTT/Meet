@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import LoadingScreen from "@/app/components/loading-screen";
 
 type ClientCase = {
   id: string;
@@ -155,12 +156,7 @@ export default function ClientAccount({ googleEnabled = false }: { googleEnabled
     setCases([]);
   }
 
-  if (loading)
-    return (
-      <main className="client-account-shell">
-        <p>Chargement de vos demandes…</p>
-      </main>
-    );
+  if (loading) return <LoadingScreen />;
 
   if (!account)
     return (

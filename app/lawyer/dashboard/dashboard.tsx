@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import LoadingScreen from "@/app/components/loading-screen";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -401,6 +402,8 @@ export default function Dashboard() {
               : "Demande de précision envoyée au client.",
     });
   }
+
+  if (status === "Loading your workspace…") return <LoadingScreen />;
 
   return (
     <main className="dashboard-shell">
